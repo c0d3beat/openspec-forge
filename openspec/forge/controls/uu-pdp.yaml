@@ -1,0 +1,45 @@
+# UU PDP (Indonesia Law 27/2022) — engineering-relevant controls.
+# class: auto (gate/SonarQube) | attested (Confluence approval by DPO/compliance) | guidance (by-design)
+# severity: error (blocks the gate, advisorily on Free) | warning (advisory only)
+regime: UU PDP (Law 27/2022)
+controls:
+  - id: PDP-LAWFUL-BASIS
+    article: "Art. 20"
+    description: A valid lawful basis is recorded for each processing activity.
+    class: attested
+    severity: error
+  - id: PDP-CONSENT
+    article: "Art. 21-22"
+    description: Explicit, informed consent is captured where consent is the lawful basis.
+    class: attested
+    severity: error
+  - id: PDP-SENSITIVE-DATA
+    article: "Art. 4"
+    description: Specific/sensitive personal data has heightened safeguards and explicit consent.
+    class: attested
+    severity: error
+  - id: PDP-DATA-SUBJECT-RIGHTS
+    article: "Art. 5-13"
+    description: Access, rectification, erasure, objection, and portability are supported.
+    class: attested
+    severity: error
+  - id: PDP-RETENTION
+    article: "Art. 43"
+    description: A retention period and deletion mechanism are defined.
+    class: attested
+    severity: warning
+  - id: PDP-CROSS-BORDER
+    article: "Art. 56"
+    description: Cross-border transfer basis/safeguards are documented.
+    class: attested
+    severity: error
+  - id: PDP-NO-PII-IN-LOGS
+    description: Personal data is not written to logs.
+    class: auto
+    check: sonar
+    severity: error
+  - id: PDP-DPIA
+    article: "Art. 34"
+    description: High-risk processing has an approved DPIA.
+    class: attested
+    severity: error

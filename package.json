@@ -1,0 +1,17 @@
+{
+  "name": "openspec-forge",
+  "version": "0.1.0",
+  "description": "Forge-flavored, governed AI-SDLC add-on for OpenSpec (installs on top of `openspec init`).",
+  "type": "module",
+  "bin": {
+    "openspec-forge": "install.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/c0d3beat/openspec-forge"
+  },
+  "license": "MIT"
+}

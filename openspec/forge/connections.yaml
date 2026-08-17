@@ -1,0 +1,23 @@
+# Forge companion connections — NON-SECRET settings only (safe to commit).
+# Tokens/secrets live in .env or the environment (SONAR_TOKEN, JIRA_TOKEN,
+# CONFLUENCE_TOKEN, GITHUB_TOKEN) — never here.
+#
+# Phase 1 does not read this file yet (no external calls); later phases do.
+# The SonarQube host is editable here, the same way tokens are configured.
+
+confluence:
+  baseUrl: https://your-org.atlassian.net/wiki
+  space: FORGE
+
+jira:
+  baseUrl: https://your-org.atlassian.net
+  project: FORGE
+
+github:
+  repo: your-org/your-app
+  branchPrefix: forge/
+
+sonarqube:
+  host: http://localhost:9000    # editable local SonarQube host (override with SONAR_HOST_URL)
+  edition: community
+  projectBase: your-app          # ephemeral per-PR key: <projectBase>-pr-<n>

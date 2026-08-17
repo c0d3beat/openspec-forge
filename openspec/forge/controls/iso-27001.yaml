@@ -1,0 +1,37 @@
+# ISO/IEC 27001:2022 — engineering-relevant Annex A subset (org-level ISMS clauses are out of scope here).
+# class: auto (SonarQube) | attested (Confluence approval) | guidance (by-design)
+regime: ISO/IEC 27001:2022 (Annex A subset)
+controls:
+  - id: ISO-A8.28-SECURE-CODING
+    clause: "A.8.28"
+    description: Secure coding principles are applied.
+    class: auto
+    check: sonar
+    severity: error
+  - id: ISO-A8.8-VULN-MGMT
+    clause: "A.8.8"
+    description: No known high/critical vulnerabilities in code or dependencies.
+    class: auto
+    check: sonar
+    severity: error
+  - id: ISO-A8.29-SECURITY-TESTING
+    clause: "A.8.29"
+    description: Security testing runs in the build/quality gate.
+    class: auto
+    check: sonar
+    severity: warning
+  - id: ISO-A8.24-CRYPTO
+    clause: "A.8.24"
+    description: Approved cryptography protects data in transit and at rest.
+    class: attested
+    severity: error
+  - id: ISO-A5.15-ACCESS-CONTROL
+    clause: "A.5.15"
+    description: Access control is defined for the feature.
+    class: attested
+    severity: error
+  - id: ISO-A8.15-LOGGING
+    clause: "A.8.15"
+    description: Security-relevant events are logged without secrets or PII.
+    class: attested
+    severity: warning

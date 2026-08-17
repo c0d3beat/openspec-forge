@@ -1,0 +1,83 @@
+name: forge-workorder
+version: 1
+description: >-
+  Forge work order — one user story, built on its own branch/PR. Kept close to
+  OpenSpec's spec-driven schema so native `openspec validate` (delta specs) applies.
+  Group work orders under a JIRA Epic + a repo RTM (see openspec/forge/DESIGN.md).
+
+artifacts:
+  - id: story
+    generates: story.md
+    description: The work order as a user story (persona, narrative, acceptance criteria) with Epic/JIRA links.
+    template: story.md
+    requires: []
+    instruction: |
+      Write this work order as a single, shippable user story.
+
+      Follow the template. Sections:
+      - **Why** / **What Changes** — one or two lines each: the intent and the scope of this story.
+      - **User Story** — "As a <persona>, I want <capability>, so that <benefit>." Use a persona defined by the Epic.
+      - **Acceptance Criteria** — a bullet list; each criterion becomes a `#### Scenario` in the spec delta.
+      - **Links** — Epic id, JIRA key (filled by `forge sync jira`), Confluence page (filled by `forge sync confluence`).
+
+      Keep it to one story. If it needs more than ~a day or spans multiple capabilities, split it into more work orders.
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: Delta specs (requirements + scenarios) this work order implements.
+    template: spec.md
+    requires:
+      - story
+    instruction: |
+      Create the delta spec(s) that define WHAT this work order changes.
+
+      - Use delta headers: `## ADDED Requirements` / `## MODIFIED Requirements` / `## REMOVED Requirements` / `## RENAMED Requirements`.
+      - Each requirement: `### Requirement: <name>` using SHALL/MUST, with at least one `#### Scenario:` in WHEN/THEN form.
+      - Turn each Acceptance Criterion from story.md into a scenario.
+      - New capability: open the file with `## Purpose` (one or two sentences, 50+ chars). Existing capability: reuse its exact path under `openspec/specs/` and do NOT add a Purpose.
+      - Where a compliance control applies, tag it in the requirement text, e.g. "(control: PDP-CONSENT)" or "(control: ISO-A8.24-CRYPTO)".
+
+      There must be at least one delta unless `.openspec.yaml` sets `skip_specs: true`.
+
+  - id: design
+    generates: design.md
+    description: Optional technical design for this work order.
+    template: design.md
+    requires:
+      - story
+    instruction: |
+      Create this file ONLY if the work order needs technical decisions — a new dependency, a data-model change,
+      a cross-cutting change, or security/performance/migration complexity. Otherwise skip it.
+
+      Cover: context, key decisions (with rationale + alternatives), risks/trade-offs, and any UI notes that defer
+      to the Epic's approved design system (do not re-pick a design system here).
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist for this work order.
+    template: tasks.md
+    requires:
+      - specs
+      - design
+    instruction: |
+      Break the work into checkbox tasks. **Follow the template exactly** — the apply phase parses `- [ ] X.Y ...`.
+
+      - Group tasks under `## N.` numbered headings; order by dependency.
+      - Include tasks for tests and for any compliance controls tagged in the specs.
+      - Keep each task small enough to verify.
+
+apply:
+  requires:
+    - tasks
+  tracks: tasks.md
+  instruction: |
+    Implement ONLY this work order.
+
+    1. Before writing code, run `node openspec/forge/gate.mjs --change <id>`. If it reports a blocking issue
+       (e.g. the plan is not approved), STOP and report — do not build unapproved work.
+    2. Work through tasks.md, checking items off as you complete them. Keep all changes on this work order's
+       branch (`forge/<JIRA-KEY>`).
+    3. When the tasks are done, run `forge pr --workorder <id>` to open the PR (SonarQube scan + status posted for review).
+    4. Then STOP. Do not start another work order in the same session.
+
+    If a task needs work beyond what the spec describes, pause and surface the added scope instead of hiding it.

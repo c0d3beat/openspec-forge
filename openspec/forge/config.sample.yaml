@@ -1,0 +1,36 @@
+# Sample openspec/config.yaml for a Forge-flavored TARGET project.
+#
+# Copy this into your target app repo's `openspec/config.yaml` and adjust to your
+# stack. Do NOT put it in this reference clone's own config.yaml. `context` and
+# `rules` are injected into every artifact; `operations.apply.guidance` is
+# surfaced to the agent by `openspec instructions apply --json`.
+
+schema: forge-workorder
+
+context: |
+  Tech stack: <e.g. React + TypeScript, Node.js API>.
+  Coding standards: <lint/format, testing conventions>.
+  Privacy-by-design (UU PDP): minimize personal data; state lawful basis, consent,
+    retention, and data-subject rights for anything touching personal data.
+  Security baseline (ISO 27001 Annex A): secure coding (A.8.28), crypto (A.8.24),
+    access control (A.5.15), no secrets or PII in logs.
+
+rules:
+  specs:
+    - For any feature handling personal data, state lawful basis, consent, retention, and the data-subject rights it supports (UU PDP).
+    - Tag applicable compliance controls in the requirement text, e.g. "(control: PDP-CONSENT)" / "(control: ISO-A8.24-CRYPTO)".
+  design:
+    - Apply secure engineering principles; document cryptography and access control (ISO 27001 A.8.24 / A.5.15).
+  tasks:
+    - Include tasks for tests and for every compliance control tagged in the specs.
+
+operations:
+  apply:
+    guidance:
+      - Implement exactly ONE work order per apply — the one named or in context. Do not start another in the same session.
+      - Before writing code, run `node openspec/forge/forge.mjs gate --change <id>`; if it reports a blocking issue, stop and report.
+      - Keep all changes on the work order's branch. When the tasks are complete, run `node openspec/forge/forge.mjs pr --workorder <id>` to open the PR.
+      - Surface unexpected scope instead of silently narrowing, deferring, or simplifying specified behavior.
+  archive:
+    guidance:
+      - Archive a work order only after its PR is merged and the JIRA story is Done.

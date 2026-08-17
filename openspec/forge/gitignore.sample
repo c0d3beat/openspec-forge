@@ -1,0 +1,6 @@
+# Add these lines to your project's root .gitignore (Forge kit caches & secrets):
+.env
+**/.forge/
+**/.scannerwork/
+**/ux-preview/node_modules/
+**/ux-preview/storybook-static/

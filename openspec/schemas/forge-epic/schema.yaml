@@ -1,0 +1,73 @@
+name: forge-epic
+version: 1
+description: >-
+  Forge epic (feature / "mission") — the planning tier above work orders. Holds
+  the shared docs (BRD/PRD/UI-UX/compliance) and the work-order breakdown; the
+  actual spec deltas and code live in per-work-order changes (schema: forge-workorder).
+  Epic changes set `skip_specs: true` in .openspec.yaml (they carry no archivable deltas of their own).
+
+artifacts:
+  - id: brd
+    generates: brd.md
+    description: Business requirements — context, objectives, stakeholders, success metrics.
+    template: brd.md
+    requires: []
+    instruction: |
+      Capture the business intent: the problem, objectives, stakeholders, success metrics, and constraints.
+      Reviewed and approved in Confluence (`forge sync confluence`).
+
+  - id: prd
+    generates: prd.md
+    description: Product requirements — scope, personas, journeys, non-functional needs.
+    template: prd.md
+    requires: [brd]
+    instruction: |
+      Define product scope, personas, user journeys, and non-functional requirements.
+      The personas defined here are reused by the work-order user stories.
+
+  - id: ux-design
+    generates: ux-design.md
+    description: UI/UX design — recommended design system (from PRD/BRD) + component inventory + a11y.
+    template: ux-design.md
+    requires: [prd, brd]
+    instruction: |
+      Recommend a design system from the PRD/BRD using the rubric (openspec/forge/ui/design-system-rubric.mjs):
+      score the allowed React systems (MUI, Ant Design, Fluent UI, Chakra, Mantine) and record the recommendation,
+      confidence, rationale (citing PRD/BRD), and runner-up. Preview it in Storybook and get it approved via
+      Confluence screenshots (Phase 7). Record the chosen system so every work order builds consistently.
+
+  - id: capabilities
+    generates: capabilities.md
+    description: Feature-level capability outline (prose) that work orders implement as spec deltas.
+    template: capabilities.md
+    requires: [prd]
+    instruction: |
+      Outline, in prose, the capabilities this feature introduces or changes. Each becomes one or more work
+      orders whose specs carry the actual delta requirements. Do NOT write delta specs here.
+
+  - id: compliance
+    generates: compliance.md
+    description: DPIA + compliance control mapping (UU PDP + ISO 27001), with an N/A path.
+    template: compliance.md
+    requires: [prd, capabilities]
+    instruction: |
+      Complete the DPIA / control mapping. If the feature processes no personal data, mark the DPIA
+      "N/A — no personal data" with a one-line justification (a reviewer must approve the N/A).
+      Tag applicable controls from openspec/forge/controls/*.yaml (UU PDP + ISO 27001).
+
+  - id: work-orders
+    generates: work-orders.md
+    description: The breakdown into work orders (user stories) — the build queue.
+    template: work-orders.md
+    requires: [capabilities, ux-design, compliance]
+    instruction: |
+      Break the feature into work orders (user stories with personas + acceptance criteria). Each becomes its own
+      change (`openspec new change <wo-id> --schema forge-workorder`), built one at a time. List them here as the queue.
+
+apply:
+  requires: [work-orders]
+  tracks: work-orders.md
+  instruction: |
+    An epic is planning, not code. "Applying" an epic means: publish the docs to Confluence for approval,
+    create the JIRA Epic + Stories (`forge sync jira`), and scaffold each work-order change. Implementation
+    happens in the work-order changes, one at a time. Run `forge rtm` to (re)generate the traceability matrix.
