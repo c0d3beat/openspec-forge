@@ -48,6 +48,80 @@ node openspec/forge/../../openspec-forge/install.mjs --update   # or re-run the 
 - Read **`openspec/forge/README.md`** (day-to-day usage) and **`openspec/forge/DESIGN.md`** (the full design).
 - `alias forge='node openspec/forge/forge.mjs'`, then `forge doctor`.
 
+## Workflows
+
+Two tools work together: **OpenSpec's `/opsx:*`** slash commands (run in Claude Code) author the artifacts,
+and **`forge`** (companion scripts) does the integrations + the gate. They're wired via
+`openspec/config.yaml`'s apply-guidance, so during `/opsx:apply` the agent automatically runs `forge gate`
+before building and `forge pr` after.
+
+> Shorthand: `alias forge='node openspec/forge/forge.mjs'`
+
+### The `forge` command surface
+
+| Command | What it does |
+|---|---|
+| `forge doctor [--check-connectivity]` | Readiness preflight — per-integration config/token/CLI |
+| `forge gate --change <id>` | Run the advisory gate (the 8 checks below) |
+| `forge scan --workorder <id> [--pr <n>]` | SonarQube CE scan → `.forge/sonar.json` |
+| `forge sync confluence <publish\|check\|read-comments> --workorder <id>` | Publish docs for review, read the `approved` label, pull reviewer comments |
+| `forge sync jira <story\|epic\|transition> [--workorder\|--epic <id>] [--to <status>]` | JIRA tracking (Story/Epic + status) |
+| `forge preview <recommend\|scaffold> --epic <id>` | Recommend a React design system from PRD/BRD + scaffold a Storybook |
+| `forge rtm` | (Re)generate the Requirements Traceability Matrix (`openspec/forge/rtm.md`) |
+| `forge pr --workorder <id> [--scan]` | gate → branch → commit → push → open PR (Sonar summary in the body) |
+
+All integration commands support `--dry-run` and offline `--result-file <mock.json>`; flip to real REST/git calls by filling `.env` and dropping those flags (`forge doctor` shows what's ready).
+
+### Two tiers: Epic → Work Orders
+
+A **feature = an Epic** (planning docs) that decomposes into **Work Orders = user stories**, each its own OpenSpec
+change built one at a time on its own branch/PR.
+
+### 1. Plan a feature (the Epic)
+
+```bash
+openspec new change my-feature --schema forge-epic
+# in Claude Code:  /opsx:propose my-feature
+#   → authors brd → prd → ux-design → capabilities → compliance → work-orders
+forge preview recommend --epic my-feature            # design system from the PRD/BRD (rationale + runner-up)
+forge preview scaffold  --epic my-feature            # Storybook in the recommended system → review locally
+forge sync confluence publish --workorder my-feature # publish docs; reviewers approve in Confluence
+forge sync jira epic --epic my-feature               # create the JIRA Epic
+```
+
+### 2. Build a work order (one at a time)
+
+```bash
+openspec new change wo-101-login --schema forge-workorder
+# in Claude Code:  /opsx:propose wo-101-login
+#   → authors story + specs (tag controls e.g. "(control: PDP-CONSENT)") + tasks
+forge sync confluence publish --workorder wo-101-login          # get it approved in Confluence
+forge sync jira story --workorder wo-101-login --epic PROJ-1    # JIRA Story; key written back into story.md
+
+# in Claude Code:  /opsx:apply wo-101-login
+#   apply-guidance makes the agent: run `forge gate` → build ONLY this work order on branch forge/<KEY>
+#   → `forge scan` (SonarQube) → `forge pr` (opens the PR)
+
+forge rtm                                                       # refresh the traceability matrix
+#   → review + merge the PR on GitHub (a human decision on Free)
+openspec archive wo-101-login                                   # fold specs into openspec/specs/, JIRA → Done
+```
+
+Repeat step 2 per work order.
+
+### The gate (advisory on GitHub Free; a human still clicks merge)
+
+`forge gate --change <id>` runs 8 checks — a work order goes green only when all pass:
+
+```
+change-exists · artifacts-present · openspec-validate · rtm-present
+sonar-quality-gate · confluence-approval (strict re-approval) · jira-sync · compliance-controls (UU PDP + ISO 27001)
+```
+
+Governance is **front-loaded** (docs approved in Confluence before build) and **advisory** at the PR (results posted for review). For a hard, merge-blocking gate, add GitHub Pro's required status checks later — the schema/scripts don't change.
+
+For the deeper design and the full lifecycle diagram, see `openspec/forge/DESIGN.md` (§13 lifecycle, §19 roadmap).
+
 ## Security note
 
 The one-liners pipe a remote script to your shell. If that's a concern, use the **clone-and-run** path above
