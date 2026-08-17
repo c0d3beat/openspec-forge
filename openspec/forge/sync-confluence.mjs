@@ -103,6 +103,18 @@ async function api(method, url, body) {
   return res.json();
 }
 
+async function uploadAttachment(base, pageId, filePath) {
+  const form = new FormData();
+  form.append('file', new Blob([readFileSync(filePath)]), path.basename(filePath));
+  const res = await fetch(`${trimSlash(base)}/rest/api/content/${pageId}/child/attachment`, {
+    method: 'PUT', // upsert by filename
+    headers: { Authorization: authHeader(), 'X-Atlassian-Token': 'no-check' },
+    body: form,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
 async function main() {
   const a = parseArgs(process.argv);
   const actions = ['publish', 'check', 'read-comments'];
@@ -128,7 +140,16 @@ async function main() {
   if (a.action === 'publish') {
     if (!existsSync(docPath)) { console.error(`  doc not found: ${docPath}`); process.exit(1); }
     const md = readFileSync(docPath, 'utf8');
-    const storage = mdToStorage(md);
+    let storage = mdToStorage(md);
+    // Auto-embed the UI mockup screenshot when present (every publish carries it).
+    const attachments = [];
+    const shot = path.join(changeDir, 'ux-preview', 'mockup.png');
+    if (existsSync(shot)) {
+      storage += '\n<h2>UI Preview</h2>\n<p><ac:image><ri:attachment ri:filename="mockup.png" /></ac:image></p>';
+      attachments.push(shot);
+      const single = path.join(changeDir, 'ux-preview', 'dist', 'index.html'); // self-contained (vite-plugin-singlefile)
+      if (existsSync(single)) attachments.push(single);
+    }
     const hash = hashDoc(changeDir, a.doc);
     const prev = readConfluenceState(changeDir) || {};
     const create = !prev.pageId;
@@ -139,6 +160,7 @@ async function main() {
       console.log('  [plan] storage preview:');
       storage.split('\n').slice(0, 4).forEach((l) => console.log(`         ${l}`));
       console.log(`  [plan] remove label 'approved' (strict re-approval)`);
+      for (const f of attachments) console.log(`  [plan] upload attachment ${path.basename(f)}${f.endsWith('.png') ? ' + embed <ac:image>' : ''}`);
       const state = { pageId: prev.pageId || '(pending)', url: prev.url || `${trimSlash(base)}/spaces/${space}`, title, doc: a.doc, publishedHash: hash, approved: false, publishedAt: new Date().toISOString() };
       console.log(`\n  wrote ${writeState(changeDir, state)}  (publishedHash ${hash}, approved cleared)`);
       process.exit(0);
@@ -151,6 +173,10 @@ async function main() {
     const resp = await api(create ? 'POST' : 'PUT', url, payload);
     const pageId = resp.id;
     try { await fetch(`${trimSlash(base)}/rest/api/content/${pageId}/label/approved`, { method: 'DELETE', headers: { Authorization: authHeader() } }); } catch { /* label may not exist */ }
+    for (const f of attachments) {
+      try { await uploadAttachment(base, pageId, f); console.log(`  attached ${path.basename(f)}`); }
+      catch (e) { console.log(`  attach failed ${path.basename(f)}: ${e.message}`); }
+    }
     const state = { pageId, url: `${trimSlash(base)}${resp._links?.webui || ''}`, title, doc: a.doc, version: resp.version?.number || 1, publishedHash: hash, approved: false, publishedAt: new Date().toISOString() };
     console.log(`\n  published page ${pageId}`);
     console.log(`  wrote ${writeState(changeDir, state)}`);

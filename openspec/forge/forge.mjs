@@ -34,7 +34,7 @@ Commands:
   gate            --change <id> [--root <path>] [--json]        run the advisory gate
   scan            --workorder <id> [--pr <n>] [--dry-run]       SonarQube scan -> .forge/sonar.json
   rtm             [--root <path>]                               (re)generate openspec/forge/rtm.md
-  preview         <recommend|scaffold> --epic <id> [--system <id>]   design-system recommendation + Storybook scaffold
+  preview         <recommend|mockup|shot> --epic <id> [--system <id>]   design-system pick + single-page app mockup + screenshot
   pr              --workorder <id> [--root <path>] [--dry-run]  open/refresh the work order's PR (--scan to scan first)
   sync confluence <publish|check|read-comments> --workorder <id>
   sync jira       <story|epic|transition> [--workorder|--epic <id>] [--to <status>]

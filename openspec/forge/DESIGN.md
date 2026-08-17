@@ -7,7 +7,7 @@
 | **Constraint** | **No edits to OpenSpec's `src/`.** Everything is a custom schema + companion assets + config. |
 | **Target** | A governed, intent-aware AI-SDLC on top of OpenSpec, inspired by Opsera Forge — Tiers 1 (rich artifacts + traceability) and 2 (governance), on GitHub **Free** + private, fully local. |
 | **Decisions** | All 10 open decisions resolved 2026-08-17 (see §17). Coding agent: **Claude Code**. Compliance: **UU PDP + ISO 27001**. |
-| **Progress** | **All 8 phases built + verified (offline).** P1 schema+gate · P2 GitHub PR · P3 SonarQube CE · P4 Confluence · P5 JIRA+Epic tier+RTM · P6 compliance catalogs+gate · P7 UI/UX recommendation+Storybook scaffold · P8 readiness (`forge doctor`, `.env.example`, gitignore, going-live). All 8 gate checks live. The live API round-trips are coded but exercised offline via `--result-file`/`--dry-run` — flip on in a real environment with tokens (README "Going live"). OpenSpec `src/` untouched throughout. |
+| **Progress** | **All 8 phases built + verified (offline).** P1 schema+gate · P2 GitHub PR · P3 SonarQube CE · P4 Confluence · P5 JIRA+Epic tier+RTM · P6 compliance catalogs+gate · P7 UI/UX recommendation + single-page mockup + screenshot · P8 readiness (`forge doctor`, `.env.example`, gitignore, going-live). All 8 gate checks live. The live API round-trips are coded but exercised offline via `--result-file`/`--dry-run` — flip on in a real environment with tokens (README "Going live"). OpenSpec `src/` untouched throughout. |
 
 ---
 
@@ -130,7 +130,7 @@ brd ──► prd ──► ux-design ──► work-orders ──► rtm
 |---|---|---|---|
 | `brd` | `brd.md` | — | Business context, objectives, stakeholders, success metrics, constraints |
 | `prd` | `prd.md` | brd | Product requirements, scope, personas, journeys, non-functional needs |
-| `ux-design` | `ux-design.md` (+ `ux-preview/`) | prd, brd | **Design-system recommendation** (§10) + component inventory + a11y; Storybook preview |
+| `ux-design` | `ux-design.md` (+ `ux-preview/`) | prd, brd | **Design-system recommendation** (§10) + component inventory + a11y; single-page app mockup |
 | `specs` | `specs/**/*.md` | prd | Feature-level capability specs (decomposed into WO deltas later) |
 | `compliance` | `compliance.md` | prd, specs | DPIA + control mapping (§11); **always present, with reviewer-approved "N/A – no personal data" path** |
 | `work-orders` | `work-orders/*.md` | specs, ux-design, compliance | Breakdown into user stories (persona + acceptance criteria); one file per WO |
@@ -178,7 +178,7 @@ sonarqube:  { host: http://localhost:9000, projectBase: app }   # editable local
 ## 9. Integrations
 
 ### 9.1 Confluence — spec/template review & approval
-- `sync-confluence.mjs` publishes prose docs (BRD/PRD/UX) as pages (markdown → Confluence storage format), and uploads the **Storybook screenshots** to the UX page. Structured artifacts (specs, work orders) are published read-only for sign-off.
+- `sync-confluence.mjs` publishes prose docs (BRD/PRD/UX) as pages (markdown → Confluence storage format), and embeds the **UI mockup screenshot** on the UX page. Structured artifacts (specs, work orders) are published read-only for sign-off.
 - **Approval signal:** a page **status/label `approved`** — `gate.mjs` reads that label.
 - **Content authority stays in the repo (read-only publish).** Reviewers do not edit content in Confluence; they **comment and approve**. A **comment-feedback loop** closes the gap: `forge sync confluence --read-comments` pulls page comments so the agent folds reviewer feedback into the repo-mastered doc, then re-publishes. Under strict re-approval (§17), re-publishing a changed doc clears its `approved` label and it must be signed off again.
 
@@ -198,7 +198,7 @@ sonarqube:  { host: http://localhost:9000, projectBase: app }   # editable local
 
 - **Framework:** React. **Allowed design systems (top 5):**
 
-  | Design system | Package | Storybook provider |
+  | Design system | Package | Root Provider (mockup) |
   |---|---|---|
   | Material Design (MUI) | `@mui/material` | `ThemeProvider` + `createTheme` |
   | Ant Design | `antd` | `ConfigProvider` |
@@ -209,10 +209,10 @@ sonarqube:  { host: http://localhost:9000, projectBase: app }   # editable local
   Honorable mentions to add later: Carbon (IBM), shadcn/ui (copy-paste Radix+Tailwind — different scaffolding).
 
 - **Recommendation (intent-driven):** the `ux-design` artifact reads PRD/BRD and scores the 5 against `ui/design-system-rubric.mjs` (archetype, brand, component complexity, accessibility, i18n/RTL, theming depth, ecosystem maturity, performance), then writes a **"Design System Recommendation"** section (recommended + confidence + rationale citing PRD/BRD + runner-up + tradeoffs). Advisory; the user confirms or overrides. Cost caveat noted: MUI X advanced grids/pickers are paid.
-- **Preview:** `preview.mjs` scaffolds a **Storybook** in the recommended system with themed component stories → reviewed locally (`npm run storybook`); regenerate in the runner-up to compare, then pick.
-- **Review/approval (Free path):** `storybook build` → **Playwright screenshots** of each story → `sync-confluence.mjs` uploads to the Confluence UX page → visual approval there. No hosting required.
+- **Preview:** `forge preview mockup` scaffolds ONE single-page Vite app — an app shell (sidebar, top menu, content table, buttons, modal) in the chosen system; the agent rebuilds `src/App.jsx` into the real shell per `ux-design.md`. Regenerate under `--system <other>` to compare.
+- **Review/approval (Free path):** `forge preview shot` renders the one mockup page to a **single screenshot** (system Chrome/Edge headless; Playwright fallback) → `sync-confluence.mjs` embeds it on the Confluence UX page (+ attaches the self-contained HTML) → visual approval there. No hosting required.
 - The chosen system is recorded in `config.yaml`, so every WO build stays consistent.
-- **Fidelity note:** preview components are a **prototype for approval**; the real implementation happens in the WO build and is kept in sync via Storybook visual-regression tests.
+- **Fidelity note:** the mockup is a **prototype for approval** (one assembled page for look-and-feel); the real implementation happens in the work-order build. Keep the mockup a reference, not the source of truth.
 
 ## 11. Governance & Compliance
 
@@ -250,7 +250,7 @@ The referee, run before build (locally by the agent) and at the PR:
 ## 13. End-to-End Lifecycle
 ```
 EPIC (forge-epic change)
-  /opsx:propose → BRD → PRD → UI/UX (recommend design system + Storybook preview)
+  /opsx:propose → BRD → PRD → UI/UX (recommend design system + single-page mockup screenshot)
                 → feature specs → compliance(DPIA) → work-orders → RTM        [repo]
   sync-confluence → publish docs + UX screenshots
      → 👤 review/approve in Confluence (docs, DPIA, compliance)
@@ -291,7 +291,7 @@ forge new-workorder --epic <e> --id <id>  scaffold a forge-workorder change + JI
 forge sync confluence --change <c>        publish/refresh docs + screenshots; read approvals
 forge sync confluence --read-comments     pull reviewer comments for the agent to revise from
 forge sync jira --change <c>              upsert Epic/Stories; write keys back
-forge preview --system <ds> --change <c>  scaffold/run Storybook; capture screenshots
+forge preview <recommend|mockup|shot> --epic <id>   design-system pick + single-page mockup + screenshot
 forge scan --pr <n>                       Sonar scan into ephemeral project; read quality gate
 forge pr --workorder <id>                 branch/commit/push/PR + post Sonar status
 forge gate --change <c> [--pr <n>]        run all gate checks; exit non-zero on failure
@@ -315,7 +315,7 @@ All are plain Node + REST; none touch OpenSpec `src/`.
 **Remaining risks (technical, not open decisions):**
 - Markdown ↔ ADF / Confluence-storage conversion fidelity — known, solved-but-real.
 - Parallel spec-delta conflicts between WOs on the same capability — sequence or sync.
-- Preview ↔ build drift — mitigated by Storybook visual-regression tests.
+- Preview ↔ build drift — the mockup is a prototype; rebuild for real in work orders (don't treat the mockup as source of truth).
 - Largest build items: the UI/UX preview, the sync scripts, and the gate.
 
 ## 18. Non-Goals (recap)
@@ -328,7 +328,7 @@ Hosted platform, MCP server, legacy reverse-engineering, static-analysis ForgeSc
 4. **Confluence** — `sync-confluence.mjs` publish + approval read + snapshot-back; gate reads approval.
 5. **JIRA** — `sync-jira.mjs` Epic/Story upsert + key write-back; `forge-epic` schema + `rtm.md`.
 6. **Compliance** — `controls/uu-pdp.yaml` + `controls/iso-27001.yaml` + `compliance` artifact + gate control checks + config rules/context.
-7. **UI/UX** — `ui/design-system-rubric.mjs` + `ux-design` recommendation + `preview.mjs` (Storybook + screenshots → Confluence).
+7. **UI/UX** — `ui/design-system-rubric.mjs` + `ux-design` recommendation + `preview.mjs` (single-page app mockup + screenshot → Confluence).
 8. **Hardening** — visual-regression, idempotency, error handling; evaluate GitHub Pro for hard gating.
 
 ## 20. Appendix — example shapes

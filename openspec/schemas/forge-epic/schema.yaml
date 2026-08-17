@@ -33,8 +33,9 @@ artifacts:
     instruction: |
       Recommend a design system from the PRD/BRD using the rubric (openspec/forge/ui/design-system-rubric.mjs):
       score the allowed React systems (MUI, Ant Design, Fluent UI, Chakra, Mantine) and record the recommendation,
-      confidence, rationale (citing PRD/BRD), and runner-up. Preview it in Storybook and get it approved via
-      Confluence screenshots (Phase 7). Record the chosen system so every work order builds consistently.
+      confidence, rationale (citing PRD/BRD), and runner-up. Then run `forge preview mockup` and rebuild
+      src/App.jsx as the real single-page app shell; `forge preview shot` renders one screenshot that
+      `forge sync confluence publish` embeds for visual approval. Record the chosen system so every work order is consistent.
 
   - id: capabilities
     generates: capabilities.md

@@ -95,11 +95,12 @@ And `work-orders.md` — the queue, built one at a time:
    rationale:   archetype(+3) · complexity/data-grid(+2) · accessibility/WCAG(+2) · i18n(+1)
 ```
 ```bash
-👤 forge preview scaffold --epic data-export     # ⚙️ writes a Storybook in MUI under ux-preview/
-👤 npm --prefix openspec/changes/data-export/ux-preview install && npm … run storybook   # 👤 review the components locally
+👤 forge preview mockup --epic data-export       # ⚙️ scaffolds a single-page app-shell mockup (MUI) under ux-preview/
+🤖 rebuilds src/App.jsx as the real Data-Export shell (sidebar, records table, export modal) per ux-design.md
+👤 forge preview shot --epic data-export         # ⚙️ renders ONE screenshot → ux-preview/mockup.png (system browser)
 ```
 
-Record the decision in `ux-design.md`. (Prefer Ant Design instead? `forge preview scaffold --epic data-export --system ant-design` and compare.)
+Record the decision in `ux-design.md`. (Prefer Ant Design instead? `forge preview mockup --epic data-export --system ant-design` and re-shoot.)
 
 ---
 
@@ -110,7 +111,7 @@ Content stays in the repo; Confluence is where humans review + sign off.
 ```bash
 👤 forge sync confluence publish --change data-export --doc prd.md        # 🌐 (repeat for brd/ux-design/compliance)
 ```
-🌐 The PM reviews the PRD; the **DPO reviews the DPIA** and adds the `approved` label. UX approves the Storybook screenshots.
+🌐 The PM reviews the PRD; the **DPO reviews the DPIA** and adds the `approved` label. UX approves the **mockup screenshot** embedded on the ux-design page.
 
 If reviewers leave comments:
 ```bash

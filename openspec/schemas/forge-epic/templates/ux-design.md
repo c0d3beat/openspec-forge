@@ -13,4 +13,4 @@
 <WCAG level, keyboard/screen-reader considerations.>
 
 ## Preview
-Storybook preview approved via Confluence screenshots (see openspec/forge/DESIGN.md §10).
+A single-page app-shell mockup (rendered by `forge preview`) is embedded in Confluence for visual approval (see openspec/forge/DESIGN.md §10).

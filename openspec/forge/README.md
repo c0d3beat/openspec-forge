@@ -20,7 +20,7 @@ The authoritative design is in [DESIGN.md](./DESIGN.md).
 - `build-rtm.mjs` — assemble `rtm.md` (requirement → WO → control → JIRA → Confluence → Sonar → branch).
 - `../schemas/forge-epic/` — the epic (feature) tier: `brd → prd → ux-design → capabilities → compliance → work-orders`.
 - `controls/` — compliance control catalogs: `uu-pdp.yaml`, `iso-27001.yaml` (extensible: gdpr, corp-policy).
-- `preview.mjs` + `ui/design-system-rubric.mjs` — recommend a React design system from PRD/BRD + scaffold a Storybook.
+- `preview.mjs` + `ui/design-system-rubric.mjs` — recommend a React design system from PRD/BRD, scaffold a **single-page app-shell mockup**, and render one screenshot.
 - `doctor.mjs` — readiness preflight (`forge doctor`): per-integration config/token/CLI → LIVE-READY vs offline-only.
 - `.env.example`, `gitignore.sample` — secrets template + gitignore lines.
 - `lib/` — `connections.mjs`, `sonar.mjs`, `confluence.mjs`, `jira.mjs`, `controls.mjs` (per-domain readers).

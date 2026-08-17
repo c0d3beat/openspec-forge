@@ -3,4 +3,4 @@
 **/.forge/
 **/.scannerwork/
 **/ux-preview/node_modules/
-**/ux-preview/storybook-static/
+**/ux-preview/dist/

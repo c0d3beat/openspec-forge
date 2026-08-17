@@ -34,7 +34,7 @@ export const rubric = {
     { match: 'i18n|internationali|localization|rtl|multi[- ]?locale|multi[- ]?language', criterion: 'i18n', favor: ['ant-design', 'mui', 'fluent'] },
     { match: 'performance|lightweight|bundle size|fast', criterion: 'complexity', favor: ['mantine', 'chakra'] },
   ],
-  // Storybook decorator (Provider/theme) per system, used by `preview.mjs scaffold`.
+  // Root Provider (theme) per system — used by `preview.mjs mockup` to wrap the single-page app in src/main.jsx.
   providers: {
     mui: { import: "import { ThemeProvider, createTheme } from '@mui/material/styles';\nimport CssBaseline from '@mui/material/CssBaseline';", setup: 'const theme = createTheme();', open: '<ThemeProvider theme={theme}><CssBaseline />', close: '</ThemeProvider>' },
     'ant-design': { import: "import { ConfigProvider } from 'antd';", setup: '', open: '<ConfigProvider>', close: '</ConfigProvider>' },

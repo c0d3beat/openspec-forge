@@ -66,7 +66,7 @@ before building and `forge pr` after.
 | `forge scan --workorder <id> [--pr <n>]` | SonarQube CE scan → `.forge/sonar.json` |
 | `forge sync confluence <publish\|check\|read-comments> --workorder <id>` | Publish docs for review, read the `approved` label, pull reviewer comments |
 | `forge sync jira <story\|epic\|transition> [--workorder\|--epic <id>] [--to <status>]` | JIRA tracking (Story/Epic + status) |
-| `forge preview <recommend\|scaffold> --epic <id>` | Recommend a React design system from PRD/BRD + scaffold a Storybook |
+| `forge preview <recommend\|mockup\|shot> --epic <id>` | Recommend a design system from PRD/BRD + scaffold a single-page app mockup + render one screenshot |
 | `forge rtm` | (Re)generate the Requirements Traceability Matrix (`openspec/forge/rtm.md`) |
 | `forge pr --workorder <id> [--scan]` | gate → branch → commit → push → open PR (Sonar summary in the body) |
 
@@ -84,7 +84,8 @@ openspec new change my-feature --schema forge-epic
 # in Claude Code:  /opsx:propose my-feature
 #   → authors brd → prd → ux-design → capabilities → compliance → work-orders
 forge preview recommend --epic my-feature            # design system from the PRD/BRD (rationale + runner-up)
-forge preview scaffold  --epic my-feature            # Storybook in the recommended system → review locally
+forge preview mockup    --epic my-feature            # single-page app-shell mockup in the chosen system
+forge preview shot      --epic my-feature            # render ONE screenshot (auto-embedded in Confluence on publish)
 forge sync confluence publish --workorder my-feature # publish docs; reviewers approve in Confluence
 forge sync jira epic --epic my-feature               # create the JIRA Epic
 ```
