@@ -45,7 +45,7 @@ node openspec/forge/../../openspec-forge/install.mjs --update   # or re-run the 
 ## After installing
 
 - Edit `openspec/forge/connections.yaml` (JIRA/Confluence/GitHub/SonarQube) and fill `.env`.
-- Read **`openspec/forge/README.md`** (day-to-day usage) and **`openspec/forge/DESIGN.md`** (the full design).
+- Read the **[end-to-end tutorial](openspec/forge/TUTORIAL.md)**, then **`openspec/forge/README.md`** (command reference) and **`openspec/forge/DESIGN.md`** (the full design).
 - `alias forge='node openspec/forge/forge.mjs'`, then `forge doctor`.
 
 ## Workflows
@@ -120,7 +120,7 @@ sonar-quality-gate · confluence-approval (strict re-approval) · jira-sync · c
 
 Governance is **front-loaded** (docs approved in Confluence before build) and **advisory** at the PR (results posted for review). For a hard, merge-blocking gate, add GitHub Pro's required status checks later — the schema/scripts don't change.
 
-For the deeper design and the full lifecycle diagram, see `openspec/forge/DESIGN.md` (§13 lifecycle, §19 roadmap).
+**New here? Walk the full example in [`openspec/forge/TUTORIAL.md`](openspec/forge/TUTORIAL.md)** — idea → shipped, governed feature, end to end. For the design rationale and lifecycle diagram, see `openspec/forge/DESIGN.md` (§13 lifecycle, §19 roadmap).
 
 ## Security note
 
