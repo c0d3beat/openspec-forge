@@ -5,6 +5,20 @@ richer artifacts (BRD/PRD/UI-UX/RTM/work-orders), a compliance + quality **gate*
 SonarQube), and Confluence / JIRA / GitHub integration — layered on top of `openspec init` with
 **no changes to OpenSpec's core** (it's a custom schema + companion scripts).
 
+## The pipeline
+
+```mermaid
+flowchart LR
+  idea(["💡 Idea"]) --> epic["📦 Epic<br/>BRD · PRD · UX · DPIA · work-orders"]
+  epic -->|"Confluence approve · JIRA Epic"| loop{{"per work order"}}
+  loop --> wo["🧩 story · specs (+controls) · tasks"]
+  wo -->|"approve · JIRA story"| gate{"⚙️ gate<br/>validate · Sonar · approved · compliance"}
+  gate -->|"pass"| pr["🌐 branch → PR → review → merge"]
+  pr --> arch["openspec archive<br/>specs updated"]
+  arch --> loop
+  arch --> done(["✅ Shipped + RTM + evidence"])
+```
+
 ## Install
 
 Run from your project root, **after** `openspec init`:

@@ -11,6 +11,54 @@ Legend: 👤 you · 🤖 agent (Claude Code, via `/opsx:*`) · ⚙️ `forge` CL
 
 ---
 
+## Flow at a glance
+
+```mermaid
+flowchart TD
+  idea(["💡 Idea"]) --> explore["/opsx:explore"]
+  explore --> epicNew["openspec new change --schema forge-epic"]
+
+  subgraph EPIC["📦 Epic — plan the feature (agent authors artifacts)"]
+    direction TB
+    brd["brd.md"] --> prd["prd.md"]
+    prd --> ux["ux-design.md — forge preview recommend → mockup → shot"]
+    prd --> caps["capabilities.md"]
+    caps --> comp["compliance.md (DPIA)"]
+    ux --> wos["work-orders.md"]
+    caps --> wos
+    comp --> wos
+  end
+  epicNew --> brd
+
+  wos --> pubE["forge sync confluence publish (+ mockup screenshot)"]
+  pubE --> apprE{"🌐 Confluence approved?"}
+  apprE -- no --> reviseE["read-comments → revise → re-publish"]
+  reviseE --> pubE
+  apprE -- yes --> jiraE["forge sync jira epic → JIRA Epic"]
+  jiraE --> loop{{"for each work order"}}
+
+  subgraph WO["🧩 Work Order — built one at a time"]
+    direction TB
+    woNew["openspec new change --schema forge-workorder"] --> propose["/opsx:propose — story + specs(+controls) + tasks"]
+    propose --> pubW["forge sync confluence publish → approve"]
+    pubW --> jiraW["forge sync jira story (key → story.md)"]
+    jiraW --> apply["/opsx:apply"]
+    apply --> gate{"⚙️ forge gate — 8 checks pass?"}
+    gate -- no --> fix["fix / get approval"]
+    fix --> gate
+    gate -- yes --> build["build on forge branch → forge scan → forge pr"]
+    build --> review{"🌐 GitHub PR merged?"}
+    review -- no --> build
+    review -- yes --> archive["openspec archive → specs updated"]
+  end
+  loop --> woNew
+  archive --> more{"more work orders?"}
+  more -- yes --> loop
+  more -- no --> done(["✅ Shipped code + updated specs + RTM + governance evidence"])
+```
+
+---
+
 ## 0. One-time setup
 
 ```bash
@@ -132,6 +180,34 @@ If reviewers leave comments:
 ## 6. Build a work order — one at a time
 
 Take the first story. **This is the core loop; you repeat it per work order.**
+
+```mermaid
+sequenceDiagram
+  actor Dev as 👤 You
+  participant CC as 🤖 Claude Code
+  participant F as ⚙️ forge
+  participant CF as 🌐 Confluence
+  participant J as 🌐 JIRA
+  participant S as 🌐 SonarQube
+  participant GH as 🌐 GitHub
+  Dev->>CC: /opsx:propose wo-…
+  CC->>CC: author story + specs(+controls) + tasks
+  Dev->>F: forge sync confluence publish
+  F->>CF: publish doc (+ mockup screenshot)
+  CF-->>Dev: reviewers add "approved" label
+  Dev->>F: forge sync jira story
+  F->>J: create Story (key written to story.md)
+  Dev->>CC: /opsx:apply
+  CC->>F: forge gate (pre-build)
+  F-->>CC: PASS (docs approved, specs valid)
+  CC->>CC: build on its own branch
+  CC->>F: forge scan
+  F->>S: analyze → quality gate
+  CC->>F: forge pr
+  F->>GH: open PR (Sonar summary in body)
+  Dev->>GH: review + merge (human decision)
+  Dev->>CC: openspec archive
+```
 
 ```bash
 👤 openspec new change wo-export-request --schema forge-workorder
