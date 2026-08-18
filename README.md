@@ -83,6 +83,7 @@ remote, builds, scans, and opens the PR (**In Review**). `/opsx:archive` verifie
 | `forge start --workorder <id> [--base main] [--force]` | Fetch origin + create/align `forge/<KEY>` from the **latest remote** (remote = source of truth) before building |
 | `forge pr --workorder <id> [--scan]` | gate → branch → commit → push → open PR (Sonar summary in the body); moves JIRA → In Review |
 | `forge done --workorder <id> [--result-file <pr.json>] [--assume-merged]` | Verify the PR is **merged** (gh/REST), then transition JIRA → Done (refuses if not merged) |
+| `forge adopt --workorder <id> \| --epic <id> [--result-file <bundle.json>]` | **Handoff:** after a fresh clone, rebuild the gitignored `.forge/` (Confluence page IDs + approval, JIRA link/status) from the systems of record — Confluence pages found by title (no duplicates) |
 
 All integration commands support `--dry-run` and offline `--result-file <mock.json>`; flip to real REST/git calls by filling `.env` and dropping those flags (`forge doctor` shows what's ready).
 

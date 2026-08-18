@@ -21,6 +21,7 @@ const routes = {
   start: ['sync-github.mjs', 'start'],
   pr: ['sync-github.mjs', 'pr'],
   done: ['sync-github.mjs', 'done'],
+  adopt: ['adopt.mjs'],
 };
 // `forge sync <target> ...`
 const syncTargets = {
@@ -40,6 +41,7 @@ Commands:
   start           --workorder <id> [--base main] [--force]     fetch origin + align forge/<KEY> to the latest remote (remote = source of truth)
   pr              --workorder <id> [--root <path>] [--dry-run]  open/refresh the work order's PR (--scan to scan first)
   done            --workorder <id> [--result-file <pr.json>] [--assume-merged]   verify the PR is MERGED, then set JIRA Done
+  adopt           --workorder <id> | --epic <id> [--result-file <bundle.json>]   reconnect .forge/ after a fresh clone (handoff)
   sync confluence <publish|check|read-comments> --workorder <id>
   sync jira       <story|epic|transition|qa> [--workorder|--epic <id>] [--to <status>] [--list]
                   (qa = file/read QA-defect issues — a workflow separate from the build Story)

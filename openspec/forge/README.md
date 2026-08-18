@@ -10,7 +10,7 @@ The authoritative design is in [DESIGN.md](./DESIGN.md).
   `test-cases` = QA (functional/UAT) cases derived from the scenarios; QA signs off in Confluence (gates propose completion).
 - `connections.yaml` — non-secret hosts/keys for Confluence/JIRA/GitHub/SonarQube (tokens go in `.env`).
 - `config.sample.yaml` — sample target-project `openspec/config.yaml` (context + rules + `operations.apply.guidance`).
-- `forge.mjs` — dispatcher: `doctor · gate · scan · rtm · preview · pr · sync confluence · sync jira`
+- `forge.mjs` — dispatcher: `doctor · gate · scan · rtm · preview · start · pr · done · adopt · sync confluence · sync jira`
   (**the agent** runs these via apply-guidance; the user never invokes `forge` directly).
 - `gate.mjs` — the advisory gate, **8 checks**: change-exists · artifacts-present · openspec-validate · rtm-present ·
   sonar-quality-gate · confluence-approval (strict re-approval) · jira-sync · compliance-controls (UU PDP + ISO 27001).
@@ -19,6 +19,7 @@ The authoritative design is in [DESIGN.md](./DESIGN.md).
 - `sync-github.mjs` — `start`: fetch origin + create/align `forge/<KEY>` from the latest remote (remote = source of truth) before building.
   `pr`: gate → branch → commit → push → PR (`gh`), PR body carries the Sonar summary, moves JIRA → In Review.
   `done`: verify the PR is **merged** (via `gh pr view` / REST pulls API) → transition JIRA → Done (refuses if not merged; `--result-file`/`--assume-merged` for offline).
+- `adopt.mjs` — **handoff reconnect**: after a fresh clone, rebuild the gitignored `.forge/` (Confluence page IDs + approval, JIRA link/status) from the systems of record — Confluence pages found **by title** (no duplicates), JIRA Story by the key in story.md (or Epic by summary). `--result-file` for offline, `--dry-run` to preview.
 - `sync-confluence.mjs` — publish **any doc** (brd/prd/ux-design/…/story) as its **own** Confluence page (publish state keyed per-document under `.forge/confluence.json`), embed the UX mockup screenshot, read the `approved` label, `read-comments` feedback loop, strict re-approval via content hash.
 - `sync-jira.mjs` — create/update JIRA Story/Epic (tracking only), write keys back into story.md, transition status
   (**To Do → In Progress → In Review → Done**; In Progress at apply start, In Review set by `forge pr`, Done via `forge done` after it verifies the PR is merged);
@@ -69,3 +70,18 @@ are coded but exercised via `--result-file`/`--dry-run`; flip them on in a real 
 4. Drop the offline flags (`--result-file`, `--dry-run`) — the same code then performs real REST/git calls.
 5. The installer's git **`pre-commit` hook** already blocks commits on `forge/*` branches until the gate passes (a real local block, bypassable with `--no-verify`).
 6. Optional: **GitHub Pro** makes the gate a *required* status check (server-side hard merge-block); until then the merge stays a human decision.
+
+## Handoff (a developer leaves, another continues)
+
+Almost everything travels in git — artifacts, living specs, the RTM, and the JIRA key committed in each
+`story.md` — and the durable truth lives in Confluence / JIRA / GitHub. Only the gitignored `.forge/` cache
+(page IDs, approval, JIRA status, Sonar) is machine-local. The new developer:
+
+1. Clone the repo; get JIRA/Confluence/GitHub access; `cp .env.example .env` and fill tokens.
+2. `node openspec/forge/forge.mjs doctor` — confirm each integration is LIVE-READY.
+3. `node openspec/forge/forge.mjs adopt --workorder <id>` (or `--epic <id>`) — rebuild `.forge/` from the
+   systems of record; it reconnects to the **existing** Confluence pages by title (no duplicates) and re-reads approval.
+4. `node openspec/forge/forge.mjs rtm`, then `openspec status --change <id>` — see exactly where things stand.
+5. `node openspec/forge/forge.mjs start --workorder <id>` — check the branch out from the latest remote, and continue.
+
+Uncommitted work that was never pushed can't be recovered — the departing dev should run `forge pr` (or push) before leaving.

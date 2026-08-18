@@ -61,6 +61,8 @@ The core realization from the feasibility study: OpenSpec is a filesystem-native
 
 **Flow direction:** content flows repo → Confluence/JIRA (publish); status flows Confluence/JIRA/Sonar → gate (read-only). Prose docs (BRD/PRD/UX) may round-trip (edit in Confluence, snapshot back to repo on approval); structured artifacts (specs, work orders) stay repo-mastered and are published read-only for sign-off.
 
+**Reconstructable cache (handoff).** The per-change `.forge/` (Confluence page IDs + approval, JIRA link/status, Sonar) is gitignored and machine-local — never the source of truth. After a fresh clone (e.g. a developer change), `forge adopt` rebuilds it from the systems of record: Confluence pages by title (`[<id>] <H1>` — the same title `publish` writes, so it reconnects instead of duplicating), the JIRA Story by the key committed in `story.md` (or the Epic by summary), and the GitHub PR by branch. The JIRA key riding in `story.md` and "remote is the source of truth" for code (§9.3) are what make the handoff clean.
+
 ## 6. System Architecture
 
 ### 6.1 Layers
@@ -303,6 +305,7 @@ forge sync jira <story|epic|transition|qa> [--workorder|--epic <id>] [--to <stat
 forge start --workorder <id> [--base main] [--force]   fetch origin + align forge/<KEY> to the latest remote (remote = source of truth)
 forge pr --workorder <id> [--scan]                  gate → branch → commit → push → open PR (+ Sonar status); JIRA → In Review
 forge done --workorder <id> [--result-file <pr.json>]   verify the PR is MERGED (gh/REST) → transition JIRA → Done
+forge adopt --workorder <id> | --epic <id>          reconnect .forge/ after a fresh clone (handoff) — Confluence by title, JIRA by key/summary
 ```
 All are plain Node + REST; none touch OpenSpec `src/`. Every integration command also supports `--dry-run` / `--result-file <mock.json>` for offline runs.
 
