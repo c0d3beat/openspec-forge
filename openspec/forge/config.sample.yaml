@@ -52,6 +52,16 @@ context: |
   pass from the initial build; do NOT open a new work order for it. QA pass/fail is tracked, not gated (it never
   blocks archiving), but resolve open QA defects before you consider the work order done.
 
+  ── HANDOFF (a new developer taking over) ──
+  If the user says they are taking over / continuing someone else's work or just cloned the repo, OR the gate
+  reports pages "not published" / "no JIRA" for a change that was clearly worked on before (its story.md already
+  carries a `JIRA:` key), treat it as a HANDOFF and reconnect FIRST — do NOT ask the user to run anything:
+      node openspec/forge/forge.mjs doctor                     (confirm tokens/hosts are LIVE-READY)
+      node openspec/forge/forge.mjs adopt --workorder <id>     (rebuild .forge/ from Confluence/JIRA; use --epic for an epic)
+      node openspec/forge/forge.mjs rtm                        (rebuild the traceability matrix)
+      node openspec/forge/forge.mjs start --workorder <id>     (check out the branch from the latest remote)
+  adopt reconnects to the EXISTING Confluence pages by title (no duplicates). Then continue as normal.
+
   Privacy-by-design (UU PDP): minimize personal data; state lawful basis, consent, retention, and
     data-subject rights for anything touching personal data.
   Security baseline (ISO 27001 Annex A): secure coding (A.8.28), crypto (A.8.24), access control (A.5.15),
@@ -73,6 +83,7 @@ operations:
   apply:
     guidance:
       - Implement exactly ONE work order per apply — the one named or in context. Do not start another in the same session.
+      - 'HANDOFF PRE-STEP — if `.forge/` has no Confluence/JIRA state for this change yet it was clearly worked on before (story.md already carries a `JIRA:` key), or the user says they are taking over / just cloned the repo, you are on a fresh clone: run `node openspec/forge/forge.mjs adopt --workorder <id>` FIRST (rebuilds `.forge/` from Confluence/JIRA so the gate reads the real state), then continue with the MANDATORY step below. Never ask the user to run forge.'
       - MANDATORY FIRST STEP — first refresh the Confluence approval by running
         `node openspec/forge/forge.mjs sync confluence check --workorder <id>` (pulls the latest `approved` label from Confluence),
         then run `node openspec/forge/forge.mjs gate --change <id>`. If the gate reports ANY blocking issue

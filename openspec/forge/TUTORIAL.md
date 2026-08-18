@@ -139,5 +139,6 @@ From a fuzzy idea to enterprise-ready, auditable code — and OpenSpec's core wa
 
 - **You never type integration commands.** The agent drives Confluence/JIRA/GitHub/SonarQube for you; the whole flow is the four commands above plus your Confluence approvals and GitHub merges.
 - **JIRA status** tracks progress automatically: To Do → In Progress (apply) → In Review (PR opened) → Done (merge verified at archive).
+- **Handoff.** Taking over someone's work on a fresh clone? Just tell the agent ("I'm taking over `<id>`") or run `/opsx:apply <id>` — it reconnects to Confluence/JIRA automatically (rebuilds the local `.forge/` cache, no duplicate pages) and continues; you don't run anything.
 - **Enforcement (GitHub Free).** Governance is front-loaded (approve before build) and advisory at the merge button; a pre-commit hook also blocks commits until the gate passes. For a hard, server-side merge block, add GitHub Pro's required checks — no schema/script changes needed.
 - **Deeper docs.** `openspec/forge/README.md` (command reference) and `openspec/forge/DESIGN.md` (design + lifecycle).

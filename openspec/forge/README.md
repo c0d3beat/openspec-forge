@@ -75,13 +75,13 @@ are coded but exercised via `--result-file`/`--dry-run`; flip them on in a real 
 
 Almost everything travels in git — artifacts, living specs, the RTM, and the JIRA key committed in each
 `story.md` — and the durable truth lives in Confluence / JIRA / GitHub. Only the gitignored `.forge/` cache
-(page IDs, approval, JIRA status, Sonar) is machine-local. The new developer:
+(page IDs, approval, JIRA status, Sonar) is machine-local, and it's **reconstructable**.
 
-1. Clone the repo; get JIRA/Confluence/GitHub access; `cp .env.example .env` and fill tokens.
-2. `node openspec/forge/forge.mjs doctor` — confirm each integration is LIVE-READY.
-3. `node openspec/forge/forge.mjs adopt --workorder <id>` (or `--epic <id>`) — rebuild `.forge/` from the
-   systems of record; it reconnects to the **existing** Confluence pages by title (no duplicates) and re-reads approval.
-4. `node openspec/forge/forge.mjs rtm`, then `openspec status --change <id>` — see exactly where things stand.
-5. `node openspec/forge/forge.mjs start --workorder <id>` — check the branch out from the latest remote, and continue.
+The new developer only: clones the repo, gets JIRA/Confluence/GitHub access, and fills `.env`. Then **tell the
+agent it's a handoff** ("I'm taking over `<id>`" / "I just cloned this"), or simply run `/opsx:apply <id>` — the
+agent reconnects on its own (it never asks you to run forge). Guided by `config.yaml`, it runs `forge doctor`,
+`forge adopt` (rebuild `.forge/` from the systems of record — reconnecting to the **existing** Confluence pages
+**by title**, no duplicates), `forge rtm`, and `forge start` (check out the branch from the latest remote), then continues.
+The apply-guidance also **auto-detects** a fresh clone (missing `.forge/` + a committed JIRA key) and adopts before the gate.
 
 Uncommitted work that was never pushed can't be recovered — the departing dev should run `forge pr` (or push) before leaving.
