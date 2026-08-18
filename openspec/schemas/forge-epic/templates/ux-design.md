@@ -4,7 +4,7 @@
 - **Recommended:** <MUI | Ant Design | Fluent UI | Chakra | Mantine>   (confidence: <high/med/low>)
 - **Why:** <rationale citing specific PRD/BRD signals>
 - **Runner-up:** <system> — <trade-off>
-- **Decision:** <confirmed / overridden to …>
+- **Decision (asked & confirmed by the user):** <the user chose … — confirmed the recommendation / overrode to …>
 
 ## Component Inventory
 <Key components/screens this feature needs.>

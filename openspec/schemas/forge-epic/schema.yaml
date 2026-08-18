@@ -25,6 +25,11 @@ artifacts:
       Define product scope, personas, user journeys, and non-functional requirements.
       The personas defined here are reused by the work-order user stories.
 
+      TECH STACK — the PRD must record the stack. If the frontend, backend, and database are not already clearly
+      stated (in openspec/config.yaml context or by the user), STOP and ASK the user to choose each, offering a
+      brief recommendation with 1–2 alternatives. Record the confirmed choices in the "Tech Stack" section; never
+      assume a stack the user hasn't confirmed.
+
   - id: ux-design
     generates: ux-design.md
     description: UI/UX design — recommended design system (from PRD/BRD) + component inventory + a11y.
@@ -32,10 +37,15 @@ artifacts:
     requires: [prd, brd]
     instruction: |
       Recommend a design system from the PRD/BRD using the rubric (openspec/forge/ui/design-system-rubric.mjs):
-      score the allowed React systems (MUI, Ant Design, Fluent UI, Chakra, Mantine) and record the recommendation,
-      confidence, rationale (citing PRD/BRD), and runner-up. Then run `forge preview mockup` and rebuild
-      src/App.jsx as the real single-page app shell; `forge preview shot` renders one screenshot that
-      `forge sync confluence publish` embeds for visual approval. Record the chosen system so every work order is consistent.
+      score the allowed React systems (MUI, Ant Design, Fluent UI, Chakra, Mantine).
+
+      ALWAYS ASK THE USER TO CHOOSE — present the ranked options with your recommendation (confidence + rationale
+      citing PRD/BRD + runner-up), then ask the user to pick or confirm before proceeding. Never silently
+      auto-select. Record their decision in the "Decision" field.
+
+      Only after the user confirms: run `forge preview mockup` in the chosen system and rebuild src/App.jsx as the
+      real single-page app shell; `forge preview shot` renders one screenshot that `forge sync confluence publish`
+      embeds for visual approval. Record the chosen system so every work order stays consistent.
 
   - id: capabilities
     generates: capabilities.md

@@ -36,13 +36,27 @@ flowchart TD
 
 ## ① Install (one-time)
 
+Install the base CLI and initialize OpenSpec:
+
 ```bash
 npm install -g @fission-ai/openspec        # base CLI
 cd my-app && openspec init                  # pick "Claude Code"
-curl -fsSL https://raw.githubusercontent.com/c0d3beat/openspec-forge/main/install.sh | bash
-$EDITOR openspec/forge/connections.yaml     # your JIRA/Confluence/GitHub/SonarQube hosts
-cp openspec/forge/.env.example .env && $EDITOR .env   # tokens
 ```
+
+Add the Forge kit — **bash / zsh:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/c0d3beat/openspec-forge/main/install.sh | bash
+```
+
+**PowerShell:**
+
+```powershell
+irm https://raw.githubusercontent.com/c0d3beat/openspec-forge/main/install.ps1 | iex
+```
+
+Then set your hosts and tokens: edit `openspec/forge/connections.yaml` (JIRA/Confluence/GitHub/SonarQube
+hosts), then copy `openspec/forge/.env.example` to `.env` and fill in the tokens.
 
 The installer wires the kit in, adds a gate pre-commit hook, and runs a readiness check. Done.
 
@@ -67,9 +81,10 @@ data-export/  (the epic)          each work order/
 └── work-orders.md
 ```
 
-Along the way it recommends a design system from your PRD/BRD and renders a one-page UI mockup,
-publishes every document to Confluence (one page each, mockup embedded), and creates the JIRA
-Epic + Stories — all automatically.
+Along the way it **asks you to confirm the tech stack** (frontend / backend / database) if it isn't already
+clear, and in the UX step **presents design-system options with a recommendation and asks you to choose**. It
+renders the one-page UI mockup in your pick, publishes every document to Confluence (one page each, mockup
+embedded), and creates the JIRA Epic + Stories.
 
 **Your job:** review the pages in Confluence and add the `approved` label — the PM signs off the
 PRD, the **DPO signs off the DPIA**, **QA signs off the test cases**, UX signs off the mockup. If

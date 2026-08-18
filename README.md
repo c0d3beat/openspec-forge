@@ -21,21 +21,18 @@ flowchart LR
 
 ## Install
 
-Run from your project root, **after** `openspec init`:
+Run from your project root, **after** `openspec init`.
+
+**bash / zsh:**
 
 ```bash
-# bash / zsh
 curl -fsSL https://raw.githubusercontent.com/c0d3beat/openspec-forge/main/install.sh | bash
+```
 
-# PowerShell
+**PowerShell:**
+
+```powershell
 irm https://raw.githubusercontent.com/c0d3beat/openspec-forge/main/install.ps1 | iex
-
-# or via npx, straight from GitHub (no npm publish involved)
-npx github:c0d3beat/openspec-forge
-
-# or inspect first, then run
-git clone --depth 1 https://github.com/c0d3beat/openspec-forge
-node openspec-forge/install.mjs --dir .
 ```
 
 Requires **Node ≥18** and that you've already run `openspec init` in the project.
@@ -48,14 +45,9 @@ Pin a version with `FORGE_REF=v1.0.0` (bash) or `$env:FORGE_REF='v1.0.0'` (Power
 - Installs a git **`pre-commit` hook** that blocks commits on `forge/*` branches until `forge gate` passes (skip with `--no-hook`).
 - Records the version in `openspec/forge/.forge-version` and runs `forge doctor`.
 
-Re-run any time to **update**:
-
-```bash
-node openspec/forge/../../openspec-forge/install.mjs --update   # or re-run the one-liner
-```
-
-`--update` replaces the kit **code** (scripts, `lib/`, schema templates) but **preserves your config**
-(`connections.yaml`, `controls/*`, the design-system rubric, `.env`, `config.yaml`). `--force` overwrites everything.
+**Updating:** re-run the same one-liner. It detects the existing kit and refreshes the kit **code**
+(scripts, `lib/`, schema templates) while **preserving your config** (`connections.yaml`, `controls/*`,
+the design-system rubric, `.env`, `config.yaml`).
 
 ## After installing
 
@@ -152,8 +144,8 @@ Governance is **front-loaded** (docs approved in Confluence before build) and **
 
 ## Security note
 
-The one-liners pipe a remote script to your shell. If that's a concern, use the **clone-and-run** path above
-(inspect `install.mjs` first), and pin `FORGE_REF` to a tagged release.
+The one-liners pipe a remote script to your shell. If that's a concern, download `install.sh` / `install.ps1`
+and read it before running, and pin `FORGE_REF` to a tagged release.
 
 ## License
 

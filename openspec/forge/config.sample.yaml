@@ -7,7 +7,8 @@
 schema: forge-workorder
 
 context: |
-  Tech stack: <e.g. React + TypeScript, Node.js API>.
+  Tech stack — Frontend: <e.g. React + TypeScript>.  Backend: <e.g. Node.js / NestJS>.  Database: <e.g. PostgreSQL>.
+  (Fill these in. If any is left as a placeholder / unclear, the agent will ASK you before authoring specs.)
   Coding standards: <lint/format, testing conventions>.
 
   ── FORGE AUTOMATION (this governs how you, the agent, work) ──
@@ -28,6 +29,13 @@ context: |
   `node openspec/forge/forge.mjs gate --change <wo>` passes — in particular until **confluence-approval is ✓**.
   If it is not approved, STOP, tell the user exactly which Confluence page(s) still need the `approved` label,
   and wait for them. Never build ahead of approval. (A git pre-commit hook also enforces this.)
+
+  ── DECISIONS TO CONFIRM WITH THE USER (never assume these) ──
+  • Tech stack: before authoring specs/design, if the frontend, backend, or database is not clearly stated
+    (above or by the user), STOP and ASK the user to choose each — give a short recommendation + 1–2 alternatives.
+    Record the confirmed stack in the PRD's "Tech Stack" section.
+  • Design system (UX phase): ALWAYS present the ranked options with your recommendation (rationale + runner-up)
+    and ask the user to pick or confirm before building the mockup — never silently auto-select. Record it in ux-design.md.
 
   ── QA TEST CASES (human QA — separate from unit tests) ──
   Every work order carries a `test-cases.md`: functional/UAT cases the QA team executes, authored from the spec
