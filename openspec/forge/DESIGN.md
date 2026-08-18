@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Status** | Design blueprint (not implemented) |
-| **Date** | 2026-08-17 |
+| **Status** | **Built + verified offline** — no edits to OpenSpec `src/` |
+| **Date** | 2026-08-17 (rev. 2026-08-18) |
 | **Constraint** | **No edits to OpenSpec's `src/`.** Everything is a custom schema + companion assets + config. |
 | **Target** | A governed, intent-aware AI-SDLC on top of OpenSpec, inspired by Opsera Forge — Tiers 1 (rich artifacts + traceability) and 2 (governance), on GitHub **Free** + private, fully local. |
 | **Decisions** | All 10 open decisions resolved 2026-08-17 (see §17). Coding agent: **Claude Code**. Compliance: **UU PDP + ISO 27001**. |
-| **Progress** | **All 8 phases built + verified (offline).** P1 schema+gate · P2 GitHub PR · P3 SonarQube CE · P4 Confluence · P5 JIRA+Epic tier+RTM · P6 compliance catalogs+gate · P7 UI/UX recommendation + single-page mockup + screenshot · P8 readiness (`forge doctor`, `.env.example`, gitignore, going-live). All 8 gate checks live. The live API round-trips are coded but exercised offline via `--result-file`/`--dry-run` — flip on in a real environment with tokens (README "Going live"). OpenSpec `src/` untouched throughout. |
+| **Progress** | **All 8 phases built + verified (offline).** P1 schema+gate · P2 GitHub PR · P3 SonarQube CE · P4 Confluence · P5 JIRA+Epic tier+RTM · P6 compliance catalogs+gate · P7 UI/UX recommendation + single-page mockup + screenshot · P8 readiness (`forge doctor`, `.env.example`, gitignore, going-live). All 8 gate checks live. **Since built (rev. 2026-08-18):** Confluence publishes **one page per document** (state keyed per-doc); the **agent auto-drives every `forge` command** (the user types only `/opsx:propose` + `/opsx:apply`, no `forge` alias); approval is a **hard gate** — apply-guidance runs `sync confluence check` → `gate` and the agent writes no code until it passes, backed by a git **`pre-commit` hook**. The live API round-trips are coded but exercised offline via `--result-file`/`--dry-run` — flip on in a real environment with tokens (README "Going live"). OpenSpec `src/` untouched throughout. |
 
 ---
 
@@ -43,7 +43,7 @@ The core realization from the feasibility study: OpenSpec is a filesystem-native
 
 1. **OpenSpec core is read-only.** Only add: custom schemas (`openspec/schemas/`), companion assets (`openspec/forge/`), and project config (`openspec/config.yaml`). This keeps OpenSpec upgradable.
 2. **CLI structures, agent executes, scripts integrate.** OpenSpec provides state/instructions; the agent authors artifacts and drives git/APIs per instructions; companion scripts centralize API calls and the gate.
-3. **Local & agent-driven. No GitHub Actions.** Everything runs on the developer's machine (the local SonarQube can't be reached by GitHub-hosted runners anyway).
+3. **Local & agent-driven. No GitHub Actions.** Everything runs on the developer's machine (the local SonarQube can't be reached by GitHub-hosted runners anyway). Single-developer model: the **remote git is the source of truth** — the agent runs `forge start` at each build to fetch origin and align the work-order branch to the latest remote before writing code.
 4. **Integrate via REST APIs, not MCP.**
 5. **Three enforcement strengths:** *advisory* (schema/config injected into the agent) < *verified* (`openspec validate`) < *hard-gated* (external gate). On GitHub Free + private, the merge cannot be hard-blocked, so enforcement is **front-loaded** (approve before build) + **advisory** at the PR.
 6. **One source of truth per concern** (see §5).
@@ -93,15 +93,18 @@ openspec/
     ui/
       design-system-rubric.mjs    # PRD/BRD → design-system recommendation rubric
     lib/                           # shared helpers (api clients, md↔ADF/storage converters, hashing)
-    forge.mjs                      # companion CLI entrypoint (subcommands below)
-    sync-confluence.mjs
+    forge.mjs                      # companion CLI entrypoint — the agent runs it (doctor|gate|scan|rtm|preview|pr|sync …)
+    sync-confluence.mjs            # one page per document (state keyed per-doc in <change>/.forge/confluence.json)
     sync-jira.mjs
     sync-github.mjs
     scan-sonar.mjs
     preview.mjs
     gate.mjs
+    doctor.mjs                     # readiness preflight
+    build-rtm.mjs
+    hooks/pre-commit.mjs           # gate enforcement (installer wires it into .git/hooks/pre-commit)
 .env                               # secrets (gitignored): SONAR_TOKEN, JIRA_TOKEN, CONFLUENCE_TOKEN, GITHUB_TOKEN
-.git/hooks/pre-push                # optional local backstop → gate.mjs (bypassable)
+.git/hooks/pre-commit              # installed by the installer → blocks commits on forge/* until the gate passes (bypassable with --no-verify)
 ```
 
 ### 6.3 Component responsibilities
@@ -142,13 +145,14 @@ Epic `apply` phase = **not code**: "publish approved docs to Confluence, create 
 
 ### 7.3 `forge-workorder` schema (DAG)
 ```
-story ──► specs ──► design ──► tasks ──► [apply/build]
-             └──────────┘
+story ──► specs ──► test-cases ──► design ──► tasks ──► [apply/build]
+             └───────────────────────┘  (design optional)
 ```
 | Artifact | generates | requires | Purpose |
 |---|---|---|---|
 | `story` | `story.md` | — | User story ("As a **[persona]**, I want … so that …") + acceptance criteria + links to Epic + JIRA key |
 | `specs` | `specs/**/*.md` | story | The delta requirements/scenarios this WO implements (acceptance criteria as `#### Scenario:`) |
+| `test-cases` | `test-cases.md` | specs | **QA (functional/UAT) cases** derived from the scenarios; QA signs off in Confluence (gates propose completion). Human QA — distinct from unit tests (SonarQube) |
 | `design` | `design.md` | story | Optional technical design (conditional) |
 | `tasks` | `tasks.md` | specs, design | Implementation checklist (checkbox-tracked) |
 | apply | — (`tracks: tasks.md`) | tasks | Build **only this WO** → branch `forge/<KEY>` → PR → Sonar scan |
@@ -162,9 +166,9 @@ Makes "build one at a time," per-story branch/PR/scan, and JIRA Story mapping **
 
 **`openspec/config.yaml`** (OpenSpec-native, injected into artifacts):
 - `schema: forge-epic` (default for new epics).
-- `context:` tech stack (React, TypeScript, …) + **privacy-by-design** and coding standards.
+- `context:` tech stack (React, TypeScript, …) + **privacy-by-design** and coding standards, plus a **FORGE AUTOMATION** block (the agent runs every `forge` command itself; the user never types `forge`) and an **APPROVAL IS A HARD GATE** block (do not write code until `confluence-approval` is ✓).
 - `rules:` per-artifact policy, e.g. `specs:` "any feature processing personal data MUST state lawful basis, consent, retention, and data-subject rights."
-- `operations.apply.guidance:` "implement only the named work order; run `gate.mjs`; open its PR; then stop." `operations.archive.guidance:` sync specs, transition JIRA.
+- `operations.apply.guidance:` "implement only the named work order; **first refresh the Confluence approval (`forge sync confluence check`), then run `forge gate` — and STOP, writing no code, unless it passes (especially `confluence-approval`)**; set the JIRA story to In Progress; then build, `forge scan`, `forge pr` (which sets In Review), and stop." `operations.archive.guidance:` after merge, transition the JIRA story to Done, then archive (fold specs into openspec/specs/).
 
 **`openspec/forge/connections.yaml`** (committed, non-secret): hosts/keys only.
 ```yaml
@@ -178,17 +182,20 @@ sonarqube:  { host: http://localhost:9000, projectBase: app }   # editable local
 ## 9. Integrations
 
 ### 9.1 Confluence — spec/template review & approval
-- `sync-confluence.mjs` publishes prose docs (BRD/PRD/UX) as pages (markdown → Confluence storage format), and embeds the **UI mockup screenshot** on the UX page. Structured artifacts (specs, work orders) are published read-only for sign-off.
+- `sync-confluence.mjs` publishes prose docs (BRD/PRD/UX) as pages (markdown → Confluence storage format), and embeds the **UI mockup screenshot** on the UX page. Structured artifacts (specs, work orders) are published read-only for sign-off. **Each document gets its own page** — publish state is a map keyed per-document (`<change>/.forge/confluence.json`), so an epic's BRD/PRD/UX/compliance/work-orders each become a distinct page/title, signed off independently (legacy single-doc state auto-migrates).
 - **Approval signal:** a page **status/label `approved`** — `gate.mjs` reads that label.
 - **Content authority stays in the repo (read-only publish).** Reviewers do not edit content in Confluence; they **comment and approve**. A **comment-feedback loop** closes the gap: `forge sync confluence --read-comments` pulls page comments so the agent folds reviewer feedback into the repo-mastered doc, then re-publishes. Under strict re-approval (§17), re-publishing a changed doc clears its `approved` label and it must be signed off again.
 
 ### 9.2 JIRA — tracking only
 - `sync-jira.mjs` creates/updates the **Epic** and per-WO **Stories** (persona/story/acceptance in the description; markdown → ADF), and writes the returned **issue keys back** into the artifacts + RTM (the durable link). Idempotent upsert by key.
-- JIRA status = *progress/tracking*, not the source of approval. Statuses: **To Do → Approved → In Progress → Done** — "Approved" mirrors the Confluence sign-off into JIRA for visibility (approval *happens* in Confluence, §9.1); "In Progress" is set when a work order's `/opsx:apply` starts; "Done" on PR merge (human-initiated). GitHub↔JIRA linking can auto-transition on merge.
+- JIRA status = *progress/tracking*, not the source of approval. Statuses: **To Do → In Progress → In Review → Done** — "To Do" on Story creation; "In Progress" when a work order's `/opsx:apply` starts (agent transitions before building); **"In Review" is set by `forge pr` after the branch is committed + pushed and the PR opened**; "Done" is set by **`forge done`, which first verifies the PR is actually merged** (gh/REST) — run at archive, after review + merge. Approval is NOT a JIRA status — it lives in Confluence (§9.1) and is read by the gate.
+- **QA-defect workflow — separate from the build Story.** `forge sync jira qa --workorder <id>` files a JIRA issue (type `Bug`, label `qa` — both configurable in `connections.yaml`) per **failing** QA test case, linked to the Story; `--list` prints them so the agent can read the defects and fix the code on the same branch. A distinct loop from the build; QA results are **tracked, never gated** (§12).
 
 ### 9.3 GitHub — code review (Free + private)
+- **Single-developer model — the remote is the source of truth.** `forge start --workorder <id>` runs at build start: it `git fetch origin` and creates/aligns `forge/<KEY>` from the latest remote (from `origin/<KEY>` if the work-order branch exists there, else `origin/<base>`), so a build never starts on a stale local base. It refuses on an uncommitted-dirty tree (`--force` to discard and match remote) and falls back to the local base when offline. Nothing else fetches/pulls; the only other network git op is `git push` in `forge pr`.
 - `sync-github.mjs`: branch `forge/<KEY>`, commit, push, `gh pr create` (title carries the JIRA key), and **post the SonarQube result** as a PR comment + a `Sonar Quality Gate` commit status (surface **C2**; SARIF inline annotations / **C1** are dropped — they need GitHub Advanced Security, unavailable on Free/private).
 - Review happens on the PR. On Free + private, required checks/branch protection are unavailable, so the status is **informational** (see §14).
+- `forge done --workorder <id>` closes the loop: it **verifies the PR is merged** (`gh pr view`, or the REST pulls API via `GITHUB_TOKEN`) and only then transitions the JIRA Story to Done — so Done reflects a real merge, not an assertion. Offline it accepts `--result-file <pr.json>`; `--assume-merged` is an explicit unverified override.
 
 ### 9.4 SonarQube Community Edition (local)
 - CE has **no branch/PR analysis**. `scan-sonar.mjs` therefore scans each WO PR into an **ephemeral project** `projectKey=<projectBase>-pr-<n>`, reads the quality gate + issues via the Web API (`/api/qualitygates/project_status`, `/api/issues/search`), hands them to `sync-github.mjs`, and **deletes the ephemeral project on PR close**.
@@ -226,26 +233,22 @@ A regulation/policy is decomposed into **controls**, each in one of three enforc
 
 **Control catalogs** in `openspec/forge/controls/` — **two active regimes: `uu-pdp.yaml` and `iso-27001.yaml`** (each control: `id`, `article`/`clause`, `description`, `class`, `check`, `severity`; a requirement/WO tags which catalogs apply). **UU PDP** controls: lawful basis, explicit consent, sensitive-data safeguards, data-subject rights (access/rectify/erase/port/object), retention & deletion, cross-border transfer, privacy-by-design, security/encryption, no-PII-in-logs (Sonar), DPIA for high-risk. **ISO/IEC 27001:2022** — only the **engineering-relevant Annex A subset** applies in the pipeline: A.8.25 secure development lifecycle, A.8.26 application security requirements, A.8.27 secure engineering principles, A.8.28 secure coding, A.8.29 security testing, A.8.24 cryptography, A.8.15 logging, A.8.8 technical-vulnerability management, A.5.15 access control (org-level ISMS clauses are out of scope — same engineering-vs-organizational boundary as UU PDP). Many ISO controls are **auto-checkable via SonarQube** (secure coding, vulnerabilities, security testing), so ISO 27001 leans on the gate more than UU PDP does. The framework still extends to `gdpr.yaml`/`corp-policy.yaml` later.
 
-The `compliance` artifact holds the DPIA + control mapping, always present, with an explicit **reviewer-approved "N/A – no personal data"** path (mirrors OpenSpec's `skip_specs`, since the DAG can't express conditional requirements). RTM links each requirement → control → evidence (PR) → approver = the audit trail.
+The `compliance` artifact holds the DPIA + control mapping, always present, with an explicit **reviewer-approved "N/A – no personal data"** path (mirrors OpenSpec's `skip_specs`, since the DAG can't express conditional requirements). RTM links each requirement → control → evidence (PR) → approver = the audit trail; it also links each requirement to its **QA test cases + results** (human-executed acceptance evidence, supporting ISO 27001 A.8.29 security/acceptance testing).
 
 **Honest boundaries:** (a) the pipeline enforces engineering/product privacy-by-design + evidence, **not** organizational obligations (breach notification within ~3×24h, DPO appointment, RoPA) — those are documented, not executed; (b) it is a **compliance aid, not legal assurance** — the DPO/legal sign-off remains the authority; (c) on Free tier, compliance enforcement inherits the advisory ceiling (§14) — the strongest argument for the hard-gate upgrade.
 
 ## 12. The Gate (`gate.mjs`)
 
-The referee, run before build (locally by the agent) and at the PR:
+The referee, run before build (locally by the agent) and at the PR. `forge gate --change <id>` runs **8 checks**:
 
-**Pre-build checks** (front-loaded):
-- Confluence: required docs (BRD/PRD/UX/specs/work-orders/compliance) are **Approved**.
-- Content integrity: repo content == the approved snapshot (content hash) — no building from unapproved edits.
-- Compliance: all **auto** controls satisfied; all **attested** controls approved; DPIA substantive or N/A-approved.
+`change-exists · artifacts-present · openspec-validate · rtm-present · sonar-quality-gate · confluence-approval (strict re-approval) · jira-sync · compliance-controls (UU PDP + ISO 27001)`
 
-**Per-PR checks** (per work order):
-- `openspec validate` passes for the WO change.
-- RTM row present (requirement → WO → control → JIRA key → PR).
-- SonarQube quality gate = pass (from the ephemeral project).
-- Human PR review approved.
+**Pre-build (front-loaded):** *confluence-approval* — required docs (for a work order: **story.md + test-cases.md**) are **Approved** and repo content == the approved snapshot (content hash), so nothing builds from unapproved edits or unapproved QA cases; *compliance-controls* — all **auto** controls satisfied, all **attested** controls approved, DPIA substantive or N/A-approved.
+**Per work order:** *change-exists* + *artifacts-present* (story, specs, **test-cases**, tasks); *openspec-validate* passes for the WO change; *rtm-present* (requirement → WO → control → JIRA key → PR); *sonar-quality-gate* = pass (from the ephemeral project); *jira-sync* — the Story key is written back. Human PR review is the final, out-of-band approval. **QA *execution* results are not a gate check** (tracked in JIRA/RTM, per the resolved decision).
 
-**Result:** pass/fail with a report. On Free tier this **blocks the agent's local build/PR step and posts status to the PR**, but cannot block the human merge button (§14).
+Because the gate reads the **cached** approval in `.forge/confluence.json`, `/opsx:apply` runs `forge sync confluence check` **first** to pull the latest `approved` label, then `forge gate` — so a just-granted approval is picked up.
+
+**Result & enforcement:** pass/fail with a report. On Free tier this is enforced three ways before merge — the agent **hard-stops** in apply-guidance (writes no code unless the gate passes), a git **`pre-commit` hook** blocks commits on `forge/*` branches until it passes, and `forge pr` refuses to open a PR otherwise — and the result is **posted to the PR**. It still cannot block the human merge button (§14).
 
 ## 13. End-to-End Lifecycle
 ```
@@ -259,11 +262,11 @@ EPIC (forge-epic change)
 
 WORK ORDER (forge-workorder change, one at a time)
   /opsx:apply WO-101
-    → gate.mjs pre-build: Confluence-approved + snapshot match + compliance controls  → else STOP
-    → branch forge/WO-101 → implement tasks → commit → gh pr create (links Story)
-    → scan-sonar (ephemeral project) → sync-github posts quality-gate comment + status
+    → forge sync confluence check (refresh approval) → gate.mjs (8 checks): Confluence-approved + snapshot + specs valid + RTM + Sonar + compliance  → else STOP (agent writes no code; the git pre-commit hook also blocks the commit)
+    → JIRA Story → In Progress → forge start (fetch origin; forge/WO-101 from latest remote) → implement tasks → commit
+    → scan-sonar (ephemeral project) → forge pr: push + gh pr create (links Story) → JIRA Story → In Review → posts quality-gate comment + status
     → 👤 code review on the PR;  gate posts per-PR status (advisory on Free)
-    → merge → delete ephemeral Sonar project → JIRA Story → Done
+    → merge → delete ephemeral Sonar project → forge done (verifies merge) → JIRA Story → Done
   openspec archive (WO) → delta specs fold into openspec/specs/
 ```
 
@@ -271,7 +274,7 @@ WORK ORDER (forge-workorder change, one at a time)
 
 | Tier | What you get | Requires |
 |---|---|---|
-| **Current: Free + private + local (chosen)** | Front-loaded approval (approve docs before build) + agent refuses unapproved WOs + advisory PR status (Sonar/validate/RTM visible). **Merge is an explicit human decision** (the gate informs; a person clicks merge). | nothing |
+| **Current: Free + private + local (chosen)** | Front-loaded approval (approve docs before build) + agent **hard-stops** on an unapproved WO (apply-guidance) + a git **`pre-commit` hook** blocks commits on `forge/*` until the gate passes + `forge pr` refuses otherwise + advisory PR status (Sonar/validate/RTM visible). **Merge is an explicit human decision** (the gate informs; a person clicks merge). | nothing |
 | **GitHub Pro (~$4/mo)** | Required status checks + rulesets on private repos → the gate becomes a **hard merge block** | Pro plan |
 | **Self-hosted runner / CI** | Server-side, tamper-resistant re-checks (reach the local Sonar from the same network) | a runner |
 | **Team/Enterprise + Code Security** | C1 SARIF inline code-scanning annotations | paid GHAS |
@@ -285,18 +288,23 @@ For **legal compliance** specifically, the advisory ceiling is the weakest point
 - No PII in logs or in artifacts committed to the repo (a UU-PDP control, Sonar-checked).
 
 ## 16. Companion CLI (`forge.mjs`) — command surface
+
+The **agent** runs these via `node openspec/forge/forge.mjs …` (wired through apply-guidance); the user never invokes `forge` directly.
 ```
-forge new-epic <name>                     scaffold a forge-epic change
-forge new-workorder --epic <e> --id <id>  scaffold a forge-workorder change + JIRA Story
-forge sync confluence --change <c>        publish/refresh docs + screenshots; read approvals
-forge sync confluence --read-comments     pull reviewer comments for the agent to revise from
-forge sync jira --change <c>              upsert Epic/Stories; write keys back
-forge preview <recommend|mockup|shot> --epic <id>   design-system pick + single-page mockup + screenshot
-forge scan --pr <n>                       Sonar scan into ephemeral project; read quality gate
-forge pr --workorder <id>                 branch/commit/push/PR + post Sonar status
-forge gate --change <c> [--pr <n>]        run all gate checks; exit non-zero on failure
+forge doctor [--check-connectivity]                 readiness preflight per integration
+forge gate --change <id> [--pr <n>]                 run all 8 gate checks; exit non-zero on failure
+forge scan --workorder <id> [--pr <n>]              Sonar CE scan → ephemeral per-PR project → quality gate
+forge rtm                                           (re)generate the RTM (openspec/forge/rtm.md)
+forge preview <recommend|mockup|shot> --epic <id>   design-system pick + single-page mockup + one screenshot
+forge sync confluence <publish|check|read-comments> --workorder <id> [--change <e> --doc <f>.md]
+                                                    publish each doc as its own page; read the `approved` label; pull comments
+forge sync jira <story|epic|transition|qa> [--workorder|--epic <id>] [--to <status>] [--list]
+                                                    upsert Epic/Story + write keys back; `qa` files/reads QA-defect issues (separate workflow)
+forge start --workorder <id> [--base main] [--force]   fetch origin + align forge/<KEY> to the latest remote (remote = source of truth)
+forge pr --workorder <id> [--scan]                  gate → branch → commit → push → open PR (+ Sonar status); JIRA → In Review
+forge done --workorder <id> [--result-file <pr.json>]   verify the PR is MERGED (gh/REST) → transition JIRA → Done
 ```
-All are plain Node + REST; none touch OpenSpec `src/`.
+All are plain Node + REST; none touch OpenSpec `src/`. Every integration command also supports `--dry-run` / `--result-file <mock.json>` for offline runs.
 
 ## 17. Resolved Decisions & Remaining Risks
 
@@ -305,7 +313,7 @@ All are plain Node + REST; none touch OpenSpec `src/`.
 2. **Coding agent** = **Claude Code** (OpenSpec generates its skills; `gh`/`node`/`sonar-scanner` auto-approved via `.claude/settings.json`).
 3. **Repo topology** = **per-project kit**: the `forge` schemas + `openspec/forge/` live in each target app's repo (where `openspec/` lives); this OpenSpec clone is the reference/dev copy.
 4. **Confluence approval signal** = a page **status/label `approved`** (gate reads the label).
-5. **JIRA** = Epic + Story issue types; statuses **To Do → Approved → In Progress → Done** ("Approved" mirrors the Confluence sign-off for tracking; approval itself happens in Confluence).
+5. **JIRA** = Epic + Story issue types; statuses **To Do → In Progress → In Review → Done** (In Progress at `/opsx:apply` start, **In Review set by `forge pr` after commit+push**, **Done set by `forge done` which verifies the merge**; approval is not a JIRA status — it lives in Confluence). *(Revised 2026-08-18 from the earlier To Do→Approved→In Progress→Done.)*
 6. **Prose docs** = **read-only publish (repo-mastered)** + a **comment-feedback loop**: the agent reads Confluence comments (`--read-comments`), revises the repo doc, and re-publishes. Content authority never leaves the repo.
 7. **Work-order approval** = **Confluence sign-off** (JIRA stays tracking-only).
 8. **Enforcement** = **GitHub Free, advisory**; the **PR merge is an explicit human decision** (gate informs, human merges). Hard gating (Pro) deferred.
@@ -428,4 +436,4 @@ signals:
 
 ---
 
-*End of design blueprint. Nothing here has been implemented; no OpenSpec source files were modified.*
+*End of design document. All eight phases are built and verified offline; no OpenSpec source files were modified.*

@@ -2,8 +2,9 @@
 /**
  * Forge Confluence sync — Phase 4.
  *
- * Content authority stays in the REPO. We publish a work order's story.md to a
- * Confluence page for review, record what we published, and read back approval.
+ * Content authority stays in the REPO. We publish a change's document to its OWN
+ * Confluence page (one page per --doc: story.md for a work order; brd/prd/ux-design/…
+ * for an epic), record what we published, and read back approval.
  *
  *   publish        render story.md → Confluence storage, create/update the page,
  *                  record <changeDir>/.forge/confluence.json (publishedHash, approved:false).
@@ -21,7 +22,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { readConnections } from './lib/connections.mjs';
-import { confluenceStatePath, readConfluenceState, hashDoc } from './lib/confluence.mjs';
+import { readConfluenceState, writeConfluenceState, hashDoc } from './lib/confluence.mjs';
 
 function parseArgs(argv) {
   const a = { action: argv[2], root: process.cwd(), dryRun: false, doc: 'story.md' };
@@ -65,17 +66,13 @@ function mdToStorage(md) {
   return out.join('\n');
 }
 
-function storyTitle(changeDir, wo) {
-  const p = path.join(changeDir, 'story.md');
-  const t = existsSync(p) ? (readFileSync(p, 'utf8').match(/^#\s+(?:Work Order:\s*)?(.+)$/m) || [])[1] : null;
-  return `[${wo}] ${(t && t.trim()) || wo}`;
-}
-
-function writeState(changeDir, state) {
-  const p = confluenceStatePath(changeDir);
-  mkdirSync(path.dirname(p), { recursive: true });
-  writeFileSync(p, JSON.stringify(state, null, 2) + '\n');
-  return p;
+// One Confluence page per DOCUMENT: title from the doc's own H1, so an epic's
+// brd/prd/ux-design/… each become distinct pages. (State persistence is per-doc
+// via writeConfluenceState in lib/confluence.mjs.)
+function pageTitle(changeDir, doc, id) {
+  const p = path.join(changeDir, doc);
+  const h1 = existsSync(p) ? (readFileSync(p, 'utf8').match(/^#\s+(?:Work Order:\s*)?(.+)$/m) || [])[1] : null;
+  return `[${id}] ${(h1 && h1.trim()) || doc.replace(/\.md$/, '')}`;
 }
 
 function labelsFromResponse(raw) {
@@ -129,10 +126,10 @@ async function main() {
   const conn = readConnections(root);
   const base = process.env.CONFLUENCE_BASE_URL || conn.confluence?.baseUrl || 'https://your-org.atlassian.net/wiki';
   const space = conn.confluence?.space || 'FORGE';
-  const title = storyTitle(changeDir, a.workorder);
+  const title = pageTitle(changeDir, a.doc, a.workorder);
   const docPath = path.join(changeDir, a.doc);
 
-  console.log(`\nForge Confluence ${a.action} — work order ${a.workorder}`);
+  console.log(`\nForge Confluence ${a.action} — ${a.workorder}  (doc: ${a.doc})`);
   console.log(`  base:  ${base}`);
   console.log(`  space: ${space}`);
   console.log(`  title: ${title}`);
@@ -141,17 +138,17 @@ async function main() {
     if (!existsSync(docPath)) { console.error(`  doc not found: ${docPath}`); process.exit(1); }
     const md = readFileSync(docPath, 'utf8');
     let storage = mdToStorage(md);
-    // Auto-embed the UI mockup screenshot when present (every publish carries it).
+    // Auto-embed the UI mockup screenshot on the ux-design page (when present).
     const attachments = [];
     const shot = path.join(changeDir, 'ux-preview', 'mockup.png');
-    if (existsSync(shot)) {
+    if (a.doc === 'ux-design.md' && existsSync(shot)) {
       storage += '\n<h2>UI Preview</h2>\n<p><ac:image><ri:attachment ri:filename="mockup.png" /></ac:image></p>';
       attachments.push(shot);
       const single = path.join(changeDir, 'ux-preview', 'dist', 'index.html'); // self-contained (vite-plugin-singlefile)
       if (existsSync(single)) attachments.push(single);
     }
     const hash = hashDoc(changeDir, a.doc);
-    const prev = readConfluenceState(changeDir) || {};
+    const prev = readConfluenceState(changeDir, a.doc) || {};
     const create = !prev.pageId;
     const url = create ? `${trimSlash(base)}/rest/api/content` : `${trimSlash(base)}/rest/api/content/${prev.pageId}`;
 
@@ -162,7 +159,7 @@ async function main() {
       console.log(`  [plan] remove label 'approved' (strict re-approval)`);
       for (const f of attachments) console.log(`  [plan] upload attachment ${path.basename(f)}${f.endsWith('.png') ? ' + embed <ac:image>' : ''}`);
       const state = { pageId: prev.pageId || '(pending)', url: prev.url || `${trimSlash(base)}/spaces/${space}`, title, doc: a.doc, publishedHash: hash, approved: false, publishedAt: new Date().toISOString() };
-      console.log(`\n  wrote ${writeState(changeDir, state)}  (publishedHash ${hash}, approved cleared)`);
+      console.log(`\n  wrote ${writeConfluenceState(changeDir, a.doc, state)}  (publishedHash ${hash}, approved cleared)`);
       process.exit(0);
     }
 
@@ -179,12 +176,12 @@ async function main() {
     }
     const state = { pageId, url: `${trimSlash(base)}${resp._links?.webui || ''}`, title, doc: a.doc, version: resp.version?.number || 1, publishedHash: hash, approved: false, publishedAt: new Date().toISOString() };
     console.log(`\n  published page ${pageId}`);
-    console.log(`  wrote ${writeState(changeDir, state)}`);
+    console.log(`  wrote ${writeConfluenceState(changeDir, a.doc, state)}`);
     process.exit(0);
   }
 
   // check / read-comments both read from the page (or a --result-file mock)
-  const state = readConfluenceState(changeDir) || { title, doc: a.doc };
+  const state = readConfluenceState(changeDir, a.doc) || { title, doc: a.doc };
 
   if (a.action === 'check') {
     let raw;
@@ -198,7 +195,7 @@ async function main() {
     const next = { ...state, approved, labels, checkedAt: new Date().toISOString() };
     console.log(`\n  labels: [${labels.join(', ')}]`);
     console.log(`  approved: ${approved}`);
-    console.log(`  wrote ${writeState(changeDir, next)}`);
+    console.log(`  wrote ${writeConfluenceState(changeDir, a.doc, next)}`);
     process.exit(0);
   }
 

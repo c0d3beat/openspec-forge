@@ -89,10 +89,11 @@ const checks = [
       const missing = [];
       if (!has('story.md')) missing.push('story.md');
       if (!has('tasks.md')) missing.push('tasks.md');
+      if (!has('test-cases.md')) missing.push('test-cases.md');
       if (specFiles.length === 0) missing.push('specs/**/*.md');
       return missing.length
         ? { level: LEVEL.FAIL, detail: `missing: ${missing.join(', ')}` }
-        : { level: LEVEL.PASS, detail: `story.md, tasks.md, ${specFiles.length} spec file(s)` };
+        : { level: LEVEL.PASS, detail: `story.md, tasks.md, test-cases.md, ${specFiles.length} spec file(s)` };
     },
   },
   {
@@ -131,14 +132,23 @@ const checks = [
   {
     id: 'confluence-approval', phase: 4,
     run: ({ changeDir }) => {
-      const st = readConfluenceState(changeDir);
-      if (!st) return { level: LEVEL.SKIP, detail: 'not published — run `forge sync confluence publish --workorder <id>`' };
-      const current = hashDoc(changeDir, st.doc || 'story.md');
-      if (current && st.publishedHash && current !== st.publishedHash) {
-        return { level: LEVEL.FAIL, detail: `${st.doc || 'story.md'} changed since publish — re-publish + re-approve (strict re-approval)` };
+      // The plan (story) AND the QA test cases must both be signed off before any build.
+      const required = ['story.md', 'test-cases.md'];
+      const notPublished = [], stale = [], pending = [], approved = [];
+      for (const doc of required) {
+        const st = readConfluenceState(changeDir, doc);
+        if (!st) { notPublished.push(doc); continue; }
+        const current = hashDoc(changeDir, st.doc || doc);
+        if (current && st.publishedHash && current !== st.publishedHash) { stale.push(doc); continue; }
+        if (st.approved !== true) { pending.push(doc); continue; }
+        approved.push(doc);
       }
-      if (st.approved !== true) return { level: LEVEL.FAIL, detail: `awaiting Confluence approval (${st.title || st.pageId || 'page'})` };
-      return { level: LEVEL.PASS, detail: `approved in Confluence (${st.title || st.pageId})` };
+      if (notPublished.length === required.length)
+        return { level: LEVEL.SKIP, detail: 'not published — run `forge sync confluence publish --workorder <id> --doc <doc>`' };
+      if (stale.length) return { level: LEVEL.FAIL, detail: `changed since publish — re-publish + re-approve: ${stale.join(', ')} (strict re-approval)` };
+      if (notPublished.length) return { level: LEVEL.FAIL, detail: `not published yet: ${notPublished.join(', ')}` };
+      if (pending.length) return { level: LEVEL.FAIL, detail: `awaiting Confluence approval: ${pending.join(', ')}` };
+      return { level: LEVEL.PASS, detail: `approved in Confluence: ${approved.join(', ')}` };
     },
   },
   {

@@ -40,6 +40,16 @@ function schemaOf(changeDir) {
   const m = readFileSync(p, 'utf8').match(/^schema:\s*(.+)$/m);
   return m ? m[1].trim() : null;
 }
+function testCasesOf(changeDir) {
+  const p = path.join(changeDir, 'test-cases.md');
+  if (!existsSync(p)) return null;
+  const c = readFileSync(p, 'utf8');
+  const count = [...c.matchAll(/^###\s+TC-[^\s:]+/gm)].length;
+  const results = [...c.matchAll(/^-?\s*\*\*Result:\*\*\s*(.+)$/gm)].map((m) => m[1].trim().toLowerCase());
+  const pass = results.filter((r) => r.startsWith('pass')).length;
+  const fail = results.filter((r) => r.startsWith('fail')).length;
+  return { count, pass, fail };
+}
 function requirementsOf(changeDir) {
   const reqs = [];
   for (const f of listMd(path.join(changeDir, 'specs'))) {
@@ -74,16 +84,18 @@ function main() {
       const jira = readJiraState(cd);
       const sonar = readSonarResult(cd);
       const conf = readConfluenceState(cd);
+      const tc = testCasesOf(cd);
       const jiraCell = jira?.key ? `[${jira.key}](${jira.url || '#'})${jira.status ? ` (${jira.status})` : ''}` : '—';
       const confCell = conf ? (conf.approved ? 'approved' : 'pending') : '—';
+      const tcCell = tc && tc.count ? `${tc.count}${tc.pass || tc.fail ? ` · ${tc.pass}✓/${tc.fail}✗` : ''}` : '—';
       const sonarCell = sonar ? sonar.status : '—';
       const branchCell = `forge/${jira?.key || e.name}`;
       const reqs = requirementsOf(cd);
-      if (reqs.length === 0) rows.push([e.name, '—', '—', jiraCell, confCell, sonarCell, branchCell]);
-      for (const r of reqs) rows.push([e.name, r.name, r.controls.join(', ') || '—', jiraCell, confCell, sonarCell, branchCell]);
+      if (reqs.length === 0) rows.push([e.name, '—', '—', tcCell, jiraCell, confCell, sonarCell, branchCell]);
+      for (const r of reqs) rows.push([e.name, r.name, r.controls.join(', ') || '—', tcCell, jiraCell, confCell, sonarCell, branchCell]);
     }
   }
-  const header = ['Work Order', 'Requirement', 'Controls', 'JIRA', 'Confluence', 'Sonar', 'Branch'];
+  const header = ['Work Order', 'Requirement', 'Controls', 'Test Cases', 'JIRA', 'Confluence', 'Sonar', 'Branch'];
   const md = [
     '# Requirements Traceability Matrix',
     '',

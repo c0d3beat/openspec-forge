@@ -18,7 +18,9 @@ const routes = {
   scan: ['scan-sonar.mjs'],
   rtm: ['build-rtm.mjs'],
   preview: ['preview.mjs'],
+  start: ['sync-github.mjs', 'start'],
   pr: ['sync-github.mjs', 'pr'],
+  done: ['sync-github.mjs', 'done'],
 };
 // `forge sync <target> ...`
 const syncTargets = {
@@ -35,9 +37,12 @@ Commands:
   scan            --workorder <id> [--pr <n>] [--dry-run]       SonarQube scan -> .forge/sonar.json
   rtm             [--root <path>]                               (re)generate openspec/forge/rtm.md
   preview         <recommend|mockup|shot> --epic <id> [--system <id>]   design-system pick + single-page app mockup + screenshot
+  start           --workorder <id> [--base main] [--force]     fetch origin + align forge/<KEY> to the latest remote (remote = source of truth)
   pr              --workorder <id> [--root <path>] [--dry-run]  open/refresh the work order's PR (--scan to scan first)
+  done            --workorder <id> [--result-file <pr.json>] [--assume-merged]   verify the PR is MERGED, then set JIRA Done
   sync confluence <publish|check|read-comments> --workorder <id>
-  sync jira       <story|epic|transition> [--workorder|--epic <id>] [--to <status>]
+  sync jira       <story|epic|transition|qa> [--workorder|--epic <id>] [--to <status>] [--list]
+                  (qa = file/read QA-defect issues — a workflow separate from the build Story)
 
 See openspec/forge/DESIGN.md.`);
 }

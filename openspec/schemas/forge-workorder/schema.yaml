@@ -39,6 +39,27 @@ artifacts:
 
       There must be at least one delta unless `.openspec.yaml` sets `skip_specs: true`.
 
+  - id: test-cases
+    generates: test-cases.md
+    description: QA test cases (functional/UAT) derived from the spec scenarios — for human QA execution, distinct from unit tests (SonarQube).
+    template: test-cases.md
+    requires:
+      - specs
+    instruction: |
+      Write the QA test cases a human tester will execute to accept this work order. These are FUNCTIONAL / UAT
+      cases — NOT unit tests (unit/integration tests are the build's job, enforced by the SonarQube quality gate).
+
+      - Derive the cases from the spec scenarios: turn every `#### Scenario:` into at least one test case, and add the
+        negative / edge / boundary cases the scenarios imply.
+      - Follow the template: one `### TC-<n>: <title>` block per case with linked Requirement + Scenario, Type
+        (functional | negative | uat | regression), Priority, Preconditions, numbered Steps, Test Data, Expected
+        Result, and a `**Result:** Not Run` line (QA fills this in during execution).
+      - Where a case verifies a compliance control, tag it, e.g. "(control: PDP-CONSENT)".
+      - Cover each acceptance criterion at least once; give consent and data-subject-rights flows (UU PDP) explicit cases.
+
+      Then publish this page for QA sign-off (`forge sync confluence publish --workorder <id> --doc test-cases.md`).
+      /opsx:propose is NOT complete until QA approves it — the build gate (`confluence-approval`) will not pass without it.
+
   - id: design
     generates: design.md
     description: Optional technical design for this work order.

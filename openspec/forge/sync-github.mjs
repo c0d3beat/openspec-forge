@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readConnections } from './lib/connections.mjs';
 import { readSonarResult } from './lib/sonar.mjs';
+import { readJiraState } from './lib/jira.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,6 +38,9 @@ function parseArgs(argv) {
     else if (x === '--dry-run') a.dryRun = true;
     else if (x === '--skip-gate') a.skipGate = true;
     else if (x === '--no-commit') a.commit = false;
+    else if (x === '--result-file') a.resultFile = path.resolve(argv[++i]);
+    else if (x === '--assume-merged') a.assumeMerged = true;
+    else if (x === '--force') a.force = true;
     else if (x === '-h' || x === '--help') a.help = true;
   }
   return a;
@@ -71,12 +75,131 @@ function runGate(root, wo) {
   return r.status === 0;
 }
 
-function main() {
+/** `forge start` — sync the work-order branch to the remote (the source of truth) BEFORE building. */
+function runStart(a) {
+  const root = a.root;
+  const changeDir = path.join(root, 'openspec', 'changes', a.workorder);
+  if (!existsSync(changeDir)) { console.error(`change not found: ${changeDir}`); process.exit(1); }
+  const conn = readConnections(root);
+  const prefix = conn.github?.branchPrefix || 'forge/';
+  const base = a.base;
+  const story = readStory(changeDir);
+  const jira = readJiraState(changeDir);
+  const branch = `${prefix}${a.key || jira?.key || story.jira || a.workorder}`;
+
+  console.log(`\nForge start — work order ${a.workorder}`);
+  console.log(`  branch: ${branch}   base: ${base}`);
+
+  if (a.dryRun) {
+    console.log('  [plan] git fetch origin');
+    console.log(`  [plan] git switch -C ${branch} origin/${branch}   (if it exists on the remote) else origin/${base}`);
+    return;
+  }
+
+  const insideRepo = git(['rev-parse', '--is-inside-work-tree'], { cwd: root, capture: true }).status === 0;
+  if (!insideRepo) { console.error(`  ✗ ${root} is not a git repository.`); process.exit(1); }
+
+  // Remote is the source of truth, but never silently destroy uncommitted local work.
+  const dirty = (git(['status', '--porcelain'], { cwd: root, capture: true }).stdout || '').trim().length > 0;
+  if (dirty && !a.force) {
+    console.error('  ✗ uncommitted changes present — commit/stash them first, or pass --force to discard and match the remote.');
+    process.exit(1);
+  }
+
+  const switchLocal = () => {
+    const exists = git(['rev-parse', '--verify', branch], { cwd: root, capture: true }).status === 0;
+    git(exists ? ['switch', branch] : ['switch', '-c', branch], { cwd: root });
+  };
+
+  const hasRemote = (git(['remote'], { cwd: root, capture: true }).stdout || '').split(/\s+/).includes('origin');
+  if (!hasRemote) { console.log('  · no origin remote — using the local base (offline).'); switchLocal(); return; }
+
+  if (git(['fetch', 'origin'], { cwd: root }).status !== 0) {
+    console.log('  ⚠ git fetch failed (offline?) — using the local base.'); switchLocal(); return;
+  }
+  if (a.force && dirty) git(['reset', '--hard'], { cwd: root });
+
+  const remoteWo = git(['rev-parse', '--verify', `origin/${branch}`], { cwd: root, capture: true }).status === 0;
+  const startPoint = remoteWo ? `origin/${branch}` : `origin/${base}`;
+  const sw = git(['switch', '-C', branch, startPoint], { cwd: root });
+  if (sw.status !== 0) { console.error(`  ✗ could not align ${branch} to ${startPoint}`); process.exit(1); }
+  console.log(`  ✓ ${branch} aligned to ${startPoint} (remote is the source of truth)`);
+}
+
+/** Resolve whether the work order's PR is merged: { merged: true|false|null, how }. */
+async function prMergeState(a, { root, repo, branch }) {
+  if (a.assumeMerged) return { merged: true, how: '--assume-merged (UNVERIFIED)' };
+  if (a.resultFile) {
+    const pr = JSON.parse(readFileSync(a.resultFile, 'utf8'));
+    const merged = pr.merged === true || String(pr.state || '').toUpperCase() === 'MERGED' || !!pr.mergedAt || !!pr.merged_at;
+    return { merged, how: `result-file (${path.basename(a.resultFile)})` };
+  }
+  if (commandExists('gh')) {
+    const r = spawnSync('gh', ['pr', 'view', branch, '--json', 'state,mergedAt,url'], { cwd: root, encoding: 'utf8' });
+    if (r.status === 0) {
+      try { const pr = JSON.parse(r.stdout); return { merged: pr.state === 'MERGED' || !!pr.mergedAt, how: `gh (${pr.url || branch})` }; }
+      catch { return { merged: null, how: 'gh (unparseable output)' }; }
+    }
+    return { merged: null, how: 'gh (no PR found for branch)' };
+  }
+  if (process.env.GITHUB_TOKEN && repo && repo.includes('/')) {
+    const owner = repo.split('/')[0];
+    const q = encodeURIComponent(`${owner}:${branch}`);
+    const res = await fetch(`https://api.github.com/repos/${repo}/pulls?head=${q}&state=all`, {
+      headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json' },
+    });
+    if (res.ok) { const arr = await res.json(); const pr = Array.isArray(arr) ? arr[0] : null; return { merged: !!(pr && pr.merged_at), how: `REST (${pr?.html_url || branch})` }; }
+    return { merged: null, how: `REST (HTTP ${res.status})` };
+  }
+  return { merged: null, how: 'no verifier (no gh / GITHUB_TOKEN)' };
+}
+
+/** `forge done` — verify the PR is actually merged, then transition the JIRA story to Done. */
+async function runDone(a) {
+  const root = a.root;
+  const changeDir = path.join(root, 'openspec', 'changes', a.workorder);
+  if (!existsSync(changeDir)) { console.error(`change not found: ${changeDir}`); process.exit(1); }
+  const conn = readConnections(root);
+  const repo = conn.github?.repo;
+  const prefix = conn.github?.branchPrefix || 'forge/';
+  const story = readStory(changeDir);
+  const jira = readJiraState(changeDir);
+  const branch = `${prefix}${a.key || jira?.key || story.jira || a.workorder}`;
+
+  console.log(`\nForge done — work order ${a.workorder}`);
+  console.log(`  branch: ${branch}`);
+  if (!jira?.key) { console.error('  ✗ no linked JIRA story (run `forge sync jira story` first) — nothing to mark Done'); process.exit(1); }
+
+  if (a.dryRun) {
+    console.log(`  [plan] verify PR ${branch} is MERGED (gh pr view / REST)`);
+    console.log(`  [plan] if merged: sync-jira transition ${jira.key} -> Done`);
+    return;
+  }
+
+  const { merged, how } = await prMergeState(a, { root, repo, branch });
+  if (merged === true) {
+    console.log(`  ✓ PR merged  [${how}] — setting JIRA ${jira.key} -> Done`);
+    const jr = spawnSync(process.execPath, [path.join(HERE, 'sync-jira.mjs'), 'transition', '--workorder', a.workorder, '--to', 'Done', '--root', root], { stdio: 'inherit' });
+    process.exit(jr.status ?? 0);
+  }
+  if (merged === false) {
+    console.error(`  ✗ PR is NOT merged yet  [${how}] — NOT setting Done. Merge the PR, then re-run.`);
+    process.exit(1);
+  }
+  console.error(`  ⚠ could not verify merge state  [${how}].`);
+  console.error('    Fix: install `gh`, or set GITHUB_TOKEN + github.repo and re-run online;');
+  console.error('    or pass --result-file <pr.json> (offline); or --assume-merged to override (unverified).');
+  process.exit(2);
+}
+
+async function main() {
   const a = parseArgs(process.argv);
-  if (a.help || a.action !== 'pr' || !a.workorder) {
-    console.error('Usage: node openspec/forge/sync-github.mjs pr --workorder <id> [--root <path>] [--key KEY] [--base main] [--dry-run] [--skip-gate] [--no-commit]');
+  if (a.help || !['pr', 'done', 'start'].includes(a.action) || !a.workorder) {
+    console.error('Usage:\n  node openspec/forge/sync-github.mjs start --workorder <id> [--root <p>] [--base main] [--force] [--dry-run]\n  node openspec/forge/sync-github.mjs pr    --workorder <id> [--root <p>] [--key KEY] [--base main] [--dry-run] [--skip-gate] [--no-commit]\n  node openspec/forge/sync-github.mjs done  --workorder <id> [--root <p>] [--result-file <pr.json>] [--assume-merged] [--dry-run]');
     process.exit(a.help ? 0 : 2);
   }
+  if (a.action === 'start') { runStart(a); return; }
+  if (a.action === 'done') { await runDone(a); return; }
   const root = a.root;
   const changeDir = path.join(root, 'openspec', 'changes', a.workorder);
   if (!existsSync(changeDir)) { console.error(`change not found: ${changeDir}`); process.exit(1); }
@@ -167,9 +290,23 @@ function main() {
     if (r.status !== 0) { console.error('  gh pr create failed'); process.exit(1); }
   }
 
+  // 5b. Branch is committed + pushed and the PR is open → move the JIRA story to "In Review".
+  const jira = readJiraState(changeDir);
+  if (jira?.key) {
+    if (a.dryRun) {
+      console.log(`\nJIRA:\n  [plan] transition ${jira.key} -> In Review`);
+    } else {
+      console.log('\nJIRA:');
+      const jr = spawnSync(process.execPath, [path.join(HERE, 'sync-jira.mjs'), 'transition', '--workorder', a.workorder, '--to', 'In Review', '--root', root], { stdio: 'inherit' });
+      if (jr.status !== 0) console.error('  (could not set In Review — transition it manually if needed)');
+    }
+  } else {
+    console.log('\nJIRA:\n  (no linked story — skipping In Review)');
+  }
+
   console.log(`  [plan] gh api repos/${repo}/statuses/<sha> -f state=${ghStatusState} -f context="Sonar Quality Gate"   (advisory on Free)`);
 
-  console.log('\n✓ Done. On GitHub Free, review + merge happen on the PR (a human decision).\n');
+  console.log('\n✓ Done. On GitHub Free, review + merge happen on the PR (a human decision). After merge: `forge done --workorder <id>`.\n');
 }
 
-main();
+main().catch((e) => { console.error(e?.message || e); process.exit(1); });

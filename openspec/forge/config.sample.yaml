@@ -1,24 +1,61 @@
 # Sample openspec/config.yaml for a Forge-flavored TARGET project.
 #
 # Copy this into your target app repo's `openspec/config.yaml` and adjust to your
-# stack. Do NOT put it in this reference clone's own config.yaml. `context` and
-# `rules` are injected into every artifact; `operations.apply.guidance` is
-# surfaced to the agent by `openspec instructions apply --json`.
+# stack. `context` and `rules` are injected into every artifact; the
+# `operations.apply.guidance` entries reach the agent via `openspec instructions apply --json`.
 
 schema: forge-workorder
 
 context: |
   Tech stack: <e.g. React + TypeScript, Node.js API>.
   Coding standards: <lint/format, testing conventions>.
-  Privacy-by-design (UU PDP): minimize personal data; state lawful basis, consent,
-    retention, and data-subject rights for anything touching personal data.
-  Security baseline (ISO 27001 Annex A): secure coding (A.8.28), crypto (A.8.24),
-    access control (A.5.15), no secrets or PII in logs.
+
+  ── FORGE AUTOMATION (this governs how you, the agent, work) ──
+  This project uses the Forge companion. **You run every forge command yourself** via
+  `node openspec/forge/forge.mjs <cmd>` — the user never runs forge manually, so don't ask them to.
+  As you move through the workflow, drive the integrations automatically at the right moments:
+    • after writing an epic doc (brd/prd/ux-design/capabilities/compliance), publish it for review:
+        node openspec/forge/forge.mjs sync confluence publish --change <epic> --doc <file>.md
+    • for ux-design specifically: also run `... preview recommend`, then `... preview mockup`, then `... preview shot`
+      (rebuild ux-preview/src/App.jsx into the real app shell before the shot)
+    • create the JIRA Epic / a work-order Story when its docs exist:
+        ... sync jira epic --epic <epic>     |     ... sync jira story --workorder <wo> --epic <EPIC-KEY>
+    • when a work order's story/specs/tasks are authored: `... sync confluence publish --workorder <wo>`
+  Report progress to the user in plain language; keep the forge commands under the hood.
+
+  ── APPROVAL IS A HARD GATE ──
+  Do NOT write or modify any project code for a work order until
+  `node openspec/forge/forge.mjs gate --change <wo>` passes — in particular until **confluence-approval is ✓**.
+  If it is not approved, STOP, tell the user exactly which Confluence page(s) still need the `approved` label,
+  and wait for them. Never build ahead of approval. (A git pre-commit hook also enforces this.)
+
+  ── QA TEST CASES (human QA — separate from unit tests) ──
+  Every work order carries a `test-cases.md`: functional/UAT cases the QA team executes, authored from the spec
+  scenarios during /opsx:propose. Unit/integration tests are the build's job and are enforced by the SonarQube
+  quality gate; test-cases.md is for human QA. Publish it for QA sign-off:
+      node openspec/forge/forge.mjs sync confluence publish --workorder <id> --doc test-cases.md
+  /opsx:propose is NOT complete until QA approves that page — the build gate (confluence-approval) blocks without it.
+
+  ── QA-FIX WORKFLOW (distinct from the build) ──
+  When QA executes the cases and records failures, file them as JIRA issues — a workflow separate from the build Story:
+      node openspec/forge/forge.mjs sync jira qa --workorder <id>          (files a JIRA issue per failing case)
+      node openspec/forge/forge.mjs sync jira qa --workorder <id> --list   (read open QA issues to fix)
+  To address QA defects: read the open QA issues, fix the code on the SAME work-order branch, and push — a separate
+  pass from the initial build; do NOT open a new work order for it. QA pass/fail is tracked, not gated (it never
+  blocks archiving), but resolve open QA defects before you consider the work order done.
+
+  Privacy-by-design (UU PDP): minimize personal data; state lawful basis, consent, retention, and
+    data-subject rights for anything touching personal data.
+  Security baseline (ISO 27001 Annex A): secure coding (A.8.28), crypto (A.8.24), access control (A.5.15),
+    no secrets or PII in logs.
 
 rules:
   specs:
     - For any feature handling personal data, state lawful basis, consent, retention, and the data-subject rights it supports (UU PDP).
-    - Tag applicable compliance controls in the requirement text, e.g. "(control: PDP-CONSENT)" / "(control: ISO-A8.24-CRYPTO)".
+    - 'Tag applicable compliance controls in the requirement text, e.g. "(control: PDP-CONSENT)" / "(control: ISO-A8.24-CRYPTO)".'
+  test-cases:
+    - Derive a QA (functional/UAT) case from every spec scenario, plus negative and edge cases; these are human-executed, not unit tests.
+    - Give consent and data-subject-rights flows (UU PDP) explicit cases, and tag the control each case verifies.
   design:
     - Apply secure engineering principles; document cryptography and access control (ISO 27001 A.8.24 / A.5.15).
   tasks:
@@ -28,9 +65,19 @@ operations:
   apply:
     guidance:
       - Implement exactly ONE work order per apply — the one named or in context. Do not start another in the same session.
-      - Before writing code, run `node openspec/forge/forge.mjs gate --change <id>`; if it reports a blocking issue, stop and report.
-      - Keep all changes on the work order's branch. When the tasks are complete, run `node openspec/forge/forge.mjs pr --workorder <id>` to open the PR.
+      - MANDATORY FIRST STEP — first refresh the Confluence approval by running
+        `node openspec/forge/forge.mjs sync confluence check --workorder <id>` (pulls the latest `approved` label from Confluence),
+        then run `node openspec/forge/forge.mjs gate --change <id>`. If the gate reports ANY blocking issue
+        (especially `confluence-approval` not ✓), STOP immediately, tell the user which Confluence page(s) still need the
+        `approved` label, and do NOT write any code. Only proceed to build once the gate passes.
+      - 'Once the gate passes, before writing code, set the JIRA story to In Progress: `node openspec/forge/forge.mjs sync jira transition --workorder <id> --to "In Progress"`.'
+      - 'Then sync to the remote (the source of truth) BEFORE writing any code: `node openspec/forge/forge.mjs start --workorder <id>` — it fetches origin and creates/aligns `forge/<KEY>` from the latest remote so you never build on a stale base. Build only after this.'
+      - After building, run `node openspec/forge/forge.mjs scan --workorder <id>`, then `node openspec/forge/forge.mjs pr --workorder <id>`
+        (pr pushes the branch, opens the PR, and moves the JIRA story to In Review). Then stop.
       - Surface unexpected scope instead of silently narrowing, deferring, or simplifying specified behavior.
+      - QA defects are a SEPARATE workflow from this build: if `node openspec/forge/forge.mjs sync jira qa --workorder <id> --list` shows open QA issues, fix them on the same work-order branch in a follow-up pass — do NOT open a new work order. QA results are tracked, not gated.
   archive:
     guidance:
-      - Archive a work order only after its PR is merged and the JIRA story is Done.
+      - Archive a work order only after its PR has been reviewed and merged.
+      - 'Finalize with `node openspec/forge/forge.mjs done --workorder <id>`: it VERIFIES the PR is actually merged (via gh/REST) and only then transitions the JIRA story to Done. If it reports the PR is not merged, STOP and merge it first — do not force Done.'
+      - After `done` succeeds, run the archive (fold the delta specs into openspec/specs/).

@@ -4,9 +4,10 @@
  *
  *   story       create/update a Story for a work order; write the key back into story.md + .forge/jira.json
  *   epic        create/update the Epic for a feature (from the epic change dir)
- *   transition  move a Story through: To Do -> Approved -> In Progress -> Done
+ *   transition  move a Story through: To Do -> In Progress -> In Review -> Done
  *
- * "Approved" mirrors the Confluence sign-off into JIRA for visibility; approval itself happens in Confluence.
+ * JIRA tracks progress only (approval lives in Confluence). In Progress = /opsx:apply start;
+ * In Review = set by `forge pr` after branch commit + push; Done = after PR review + merge (at archive).
  * Offline/CI: --result-file ingests a captured response; --dry-run prints the calls.
  * Env: JIRA_TOKEN (+ JIRA_EMAIL for Atlassian Cloud basic auth), JIRA_BASE_URL (overrides connections).
  *
@@ -15,7 +16,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { readConnections } from './lib/connections.mjs';
-import { jiraStatePath, readJiraState } from './lib/jira.mjs';
+import { jiraStatePath, readJiraState, jiraQaStatePath, readJiraQaState } from './lib/jira.mjs';
 
 function parseArgs(argv) {
   const a = { action: argv[2], root: process.cwd(), dryRun: false };
@@ -27,6 +28,7 @@ function parseArgs(argv) {
     else if (x === '--root') a.root = path.resolve(argv[++i]);
     else if (x === '--result-file') a.resultFile = path.resolve(argv[++i]);
     else if (x === '--dry-run') a.dryRun = true;
+    else if (x === '--list') a.list = true;
     else if (x === '-h' || x === '--help') a.help = true;
   }
   return a;
@@ -77,11 +79,77 @@ async function api(method, url, body) {
   return res.status === 204 ? {} : res.json();
 }
 
+function parseTestCases(md) {
+  const heads = [...md.matchAll(/^###\s+(TC-[^\s:]+):?\s*(.*)$/gm)];
+  const out = [];
+  for (let i = 0; i < heads.length; i++) {
+    const m = heads[i];
+    const block = md.slice(m.index, i + 1 < heads.length ? heads[i + 1].index : md.length).trim();
+    const result = ((block.match(/^-?\s*\*\*Result:\*\*\s*(.+)$/m) || [])[1] || 'Not Run').trim();
+    out.push({ tcid: m[1], title: (m[2] || '').trim() || m[1], result, block });
+  }
+  return out;
+}
+function writeQaState(changeDir, state) {
+  const p = jiraQaStatePath(changeDir);
+  mkdirSync(path.dirname(p), { recursive: true });
+  writeFileSync(p, JSON.stringify(state, null, 2) + '\n');
+  return p;
+}
+/**
+ * QA-defect workflow — SEPARATE from the build Story. Files one JIRA issue per FAILING
+ * test case in test-cases.md (idempotent by TC id); `--list` prints tracked issues so the
+ * agent can read them and fix the code on the work-order branch (a pass distinct from the build).
+ */
+async function runQa({ a, base, project, conn, changeDir, prev }) {
+  const qaType = conn.jira?.qaIssueType || 'Bug';
+  const qaLabel = conn.jira?.qaLabel || 'qa';
+  const state = readJiraQaState(changeDir);
+  console.log(`\nForge JIRA qa — ${a.workorder}   (workflow: ${qaType}/${qaLabel}, separate from build Story ${prev?.key || '—'})`);
+
+  if (a.list) {
+    const entries = Object.entries(state);
+    if (!entries.length) { console.log('  no QA issues tracked yet'); return; }
+    for (const [tcid, v] of entries) console.log(`   • ${tcid}  ${v.key}  [${v.status || '?'}]  ${v.summary || ''}  ${v.url || ''}`);
+    console.log('\n  (read these, fix the code on the work-order branch, then push — a separate pass from the build)');
+    return;
+  }
+
+  const tcPath = path.join(changeDir, 'test-cases.md');
+  if (!existsSync(tcPath)) { console.error('  no test-cases.md — author QA test cases first'); process.exit(1); }
+  const failing = parseTestCases(readFileSync(tcPath, 'utf8')).filter((c) => /^fail/i.test(c.result));
+  if (!failing.length) { console.log('  no failing QA test cases — nothing to file'); return; }
+  console.log(`  ${failing.length} failing case(s)`);
+
+  const ingest = a.resultFile ? JSON.parse(readFileSync(a.resultFile, 'utf8')) : null; // { "TC-1": { key, url }, ... }
+  let changed = false;
+  for (const c of failing) {
+    if (state[c.tcid]) { console.log(`   · ${c.tcid} already filed -> ${state[c.tcid].key}`); continue; }
+    const summary = `[QA] ${prev?.key ? prev.key + ' ' : ''}${c.tcid}: ${c.title}`;
+    if (ingest && ingest[c.tcid]) {
+      state[c.tcid] = { key: ingest[c.tcid].key, url: ingest[c.tcid].url || '', status: 'To Do', summary };
+      changed = true; console.log(`   ingested ${state[c.tcid].key} for ${c.tcid}`); continue;
+    }
+    if (a.dryRun || !authHeader()) {
+      console.log(`   [plan] POST ${trimSlash(base)}/rest/api/3/issue   { type: ${qaType}, labels: [${qaLabel}], summary: "${summary}" }`);
+      if (prev?.key) console.log(`   [plan] POST .../issueLink   Relates: <new> -> ${prev.key}`);
+      continue;
+    }
+    const fields = { project: { key: project }, issuetype: { name: qaType }, summary, description: mdToAdf(c.block), labels: [qaLabel] };
+    const resp = await api('POST', `${trimSlash(base)}/rest/api/3/issue`, { fields });
+    const key = resp.key, url = `${trimSlash(base)}/browse/${key}`;
+    state[c.tcid] = { key, url, status: 'To Do', summary }; changed = true;
+    if (prev?.key) { try { await api('POST', `${trimSlash(base)}/rest/api/3/issueLink`, { type: { name: 'Relates' }, inwardIssue: { key }, outwardIssue: { key: prev.key } }); } catch { /* link best-effort */ } }
+    console.log(`   created ${key} for ${c.tcid}   (${url})`);
+  }
+  if (changed) console.log(`  wrote ${writeQaState(changeDir, state)}`);
+}
+
 async function main() {
   const a = parseArgs(process.argv);
-  const actions = ['story', 'epic', 'transition'];
+  const actions = ['story', 'epic', 'transition', 'qa'];
   if (a.help || !actions.includes(a.action)) {
-    console.error(`Usage: node openspec/forge/sync-jira.mjs <${actions.join('|')}> [--workorder <id>|--epic <id>] [--to <status>] [--root <p>] [--result-file <json>] [--dry-run]`);
+    console.error(`Usage: node openspec/forge/sync-jira.mjs <${actions.join('|')}> [--workorder <id>|--epic <id>] [--to <status>] [--list] [--root <p>] [--result-file <json>] [--dry-run]`);
     process.exit(a.help ? 0 : 2);
   }
   const root = a.root;
@@ -97,6 +165,8 @@ async function main() {
   const issuetype = isEpic ? 'Epic' : 'Story';
   const summary = `${id}: ${docTitle(changeDir, id)}`;
   const prev = readJiraState(changeDir);
+
+  if (a.action === 'qa') { await runQa({ a, base, project, conn, changeDir, prev }); return; }
 
   console.log(`\nForge JIRA ${a.action} — ${id}`);
   console.log(`  base:    ${base}`);

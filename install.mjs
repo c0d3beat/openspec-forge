@@ -11,7 +11,7 @@
  *   --update  replace kit CODE, preserve your config (connections.yaml, controls/*, rubric, .env, config.yaml)
  *   --force   overwrite everything, including your config
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, appendFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync, appendFileSync, chmodSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,13 +19,14 @@ import { fileURLToPath } from 'node:url';
 const SOURCE = path.dirname(fileURLToPath(import.meta.url)); // repo root (contains openspec/)
 
 function parseArgs(argv) {
-  const a = { dir: process.cwd(), doctor: true, update: false, force: false };
+  const a = { dir: process.cwd(), doctor: true, update: false, force: false, hook: true };
   for (let i = 2; i < argv.length; i++) {
     const x = argv[i];
     if (x === '--dir') a.dir = path.resolve(argv[++i]);
     else if (x === '--update') a.update = true;
     else if (x === '--force') a.force = true;
     else if (x === '--no-doctor') a.doctor = false;
+    else if (x === '--no-hook') a.hook = false;
     else if (x === '-h' || x === '--help') a.help = true;
   }
   return a;
@@ -34,6 +35,13 @@ function parseArgs(argv) {
 const version = (() => {
   try { return JSON.parse(readFileSync(path.join(SOURCE, 'package.json'), 'utf8')).version; } catch { return '0.0.0'; }
 })();
+
+const PRE_COMMIT_HOOK = `#!/bin/sh
+# openspec-forge gate hook
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -f "$root/openspec/forge/hooks/pre-commit.mjs" ] || exit 0
+exec node "$root/openspec/forge/hooks/pre-commit.mjs"
+`;
 
 // Files under openspec/forge/ that are user-owned config → preserved on --update.
 const isPreserved = (rel) =>
@@ -60,7 +68,7 @@ function copyTree(src, dest, { mode }) {
 
 function main() {
   const a = parseArgs(process.argv);
-  if (a.help) { console.log('Usage: node install.mjs [--dir <project>] [--update] [--force] [--no-doctor]'); process.exit(0); }
+  if (a.help) { console.log('Usage: node install.mjs [--dir <project>] [--update] [--force] [--no-doctor] [--no-hook]'); process.exit(0); }
 
   const target = a.dir;
   const kitSrc = path.join(SOURCE, 'openspec');
@@ -109,6 +117,19 @@ function main() {
   // 5. version stamp
   writeFileSync(path.join(target, 'openspec', 'forge', '.forge-version'), version + '\n');
 
+  // 5.5 git pre-commit hook — real gate enforcement (blocks commits on forge/* branches until the gate passes)
+  if (a.hook && existsSync(path.join(target, '.git'))) {
+    const hookPath = path.join(target, '.git', 'hooks', 'pre-commit');
+    mkdirSync(path.dirname(hookPath), { recursive: true });
+    if (!existsSync(hookPath)) {
+      writeFileSync(hookPath, PRE_COMMIT_HOOK);
+      try { chmodSync(hookPath, 0o755); } catch { /* windows */ }
+      console.log('  ✓ installed .git/hooks/pre-commit (blocks commits on forge/* branches until the gate passes)');
+    } else if (!readFileSync(hookPath, 'utf8').includes('openspec-forge gate hook')) {
+      console.log('  · .git/hooks/pre-commit exists — left as-is; add the forge hook manually to enforce the gate (see openspec/forge/hooks/pre-commit.mjs)');
+    }
+  }
+
   // 6. doctor
   if (a.doctor) {
     console.log('\nRunning forge doctor…');
@@ -117,8 +138,8 @@ function main() {
 
   console.log('\n✓ openspec-forge installed. Next:');
   console.log('  1. edit openspec/forge/connections.yaml (JIRA/Confluence/GitHub/SonarQube host) and fill .env');
-  console.log("  2. alias forge='node openspec/forge/forge.mjs'");
-  console.log('  3. openspec new change my-feature --schema forge-epic     # see openspec/forge/README.md\n');
+  console.log('  2. check readiness:  node openspec/forge/forge.mjs doctor');
+  console.log('  3. in your AI agent:  /opsx:propose my-feature   — the agent runs forge for you (see openspec/forge/README.md)\n');
 }
 
 main();

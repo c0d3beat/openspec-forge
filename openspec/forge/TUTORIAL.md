@@ -5,9 +5,9 @@ a self-service **"Data Export"** feature (users download their personal data —
 UU PDP / GDPR data-portability right). It touches personal data (so compliance
 lights up) and has a UI (so the design-system flow lights up).
 
-Legend: 👤 you · 🤖 agent (Claude Code, via `/opsx:*`) · ⚙️ `forge` CLI · 🌐 Confluence / JIRA / GitHub / SonarQube.
+Legend: 👤 you · 🤖 agent (Claude Code, via `/opsx:*`) · ⚙️ `forge` (the agent runs it as `node openspec/forge/forge.mjs …`) · 🌐 Confluence / JIRA / GitHub / SonarQube.
 
-> Setup shorthand used below: `alias forge='node openspec/forge/forge.mjs'`
+> **You only ever type two commands: `/opsx:propose` (plan a feature / author a work order until it's approved) and `/opsx:apply` (build one approved work order).** Everything marked ⚙️ `forge` below is run *by the agent* under the hood — shown short, for readability, so you can see what's happening. Your only other actions are human sign-offs: **approve** pages in Confluence and **merge** the PR in GitHub.
 
 ---
 
@@ -30,7 +30,7 @@ flowchart TD
   end
   epicNew --> brd
 
-  wos --> pubE["forge sync confluence publish (+ mockup screenshot)"]
+  wos --> pubE["forge sync confluence publish — one page per doc (+ mockup shot)"]
   pubE --> apprE{"🌐 Confluence approved?"}
   apprE -- no --> reviseE["read-comments → revise → re-publish"]
   reviseE --> pubE
@@ -39,11 +39,12 @@ flowchart TD
 
   subgraph WO["🧩 Work Order — built one at a time"]
     direction TB
-    woNew["openspec new change --schema forge-workorder"] --> propose["/opsx:propose — story + specs(+controls) + tasks"]
-    propose --> pubW["forge sync confluence publish → approve"]
+    woNew["openspec new change --schema forge-workorder"] --> propose["/opsx:propose — story + specs(+controls) + test-cases + tasks"]
+    propose --> pubW["publish → approve (story + QA test cases)"]
     pubW --> jiraW["forge sync jira story (key → story.md)"]
     jiraW --> apply["/opsx:apply"]
-    apply --> gate{"⚙️ forge gate — 8 checks pass?"}
+    apply --> refresh["⚙️ sync confluence check → forge gate"]
+    refresh --> gate{"8 checks pass? approval ✓?"}
     gate -- no --> fix["fix / get approval"]
     fix --> gate
     gate -- yes --> build["build on forge branch → forge scan → forge pr"]
@@ -64,7 +65,7 @@ flowchart TD
 ```bash
 npm install -g @fission-ai/openspec         # base CLI
 cd my-app && openspec init                   # 👤 pick "Claude Code"
-curl -fsSL https://raw.githubusercontent.com/c0d3beat/openspec-forge/main/install.sh | bash   # add the kit
+curl -fsSL https://raw.githubusercontent.com/c0d3beat/openspec-forge/main/install.sh | bash   # add the kit (+ a gate pre-commit hook)
 $EDITOR openspec/forge/connections.yaml      # 👤 your JIRA/Confluence/GitHub/SonarQube hosts
 cp openspec/forge/.env.example .env && $EDITOR .env   # 👤 tokens
 forge doctor                                  # ⚙️ confirms what's LIVE-READY vs offline-only
@@ -93,11 +94,10 @@ Ideation crystallized into a **feature** → that's an **Epic**.
 ## 2. Plan the feature (the Epic)
 
 ```bash
-👤 openspec new change data-export --schema forge-epic
 👤 /opsx:propose data-export
 ```
 
-🤖 The agent authors the epic artifacts in dependency order (guided by the `forge-epic` schema):
+🤖 The agent scaffolds the `forge-epic` change (`openspec new change data-export --schema forge-epic`) and authors its artifacts in dependency order (guided by the `forge-epic` schema). As it finishes each doc it also drives the ⚙️ `forge` preview/publish steps shown in §3–§5 automatically — they're broken out below so you can see them:
 
 ```
 openspec/changes/data-export/
@@ -134,7 +134,7 @@ And `work-orders.md` — the queue, built one at a time:
 ## 3. Choose the UI — recommended from the plan
 
 ```bash
-👤 forge preview recommend --epic data-export
+🤖 forge preview recommend --epic data-export
 ```
 ```
 ⚙️ recommended: MUI (Material Design)  [@mui/material]   confidence: medium
@@ -143,9 +143,9 @@ And `work-orders.md` — the queue, built one at a time:
    rationale:   archetype(+3) · complexity/data-grid(+2) · accessibility/WCAG(+2) · i18n(+1)
 ```
 ```bash
-👤 forge preview mockup --epic data-export       # ⚙️ scaffolds a single-page app-shell mockup (MUI) under ux-preview/
+🤖 forge preview mockup --epic data-export       # ⚙️ scaffolds a single-page app-shell mockup (MUI) under ux-preview/
 🤖 rebuilds src/App.jsx as the real Data-Export shell (sidebar, records table, export modal) per ux-design.md
-👤 forge preview shot --epic data-export         # ⚙️ renders ONE screenshot → ux-preview/mockup.png (system browser)
+🤖 forge preview shot --epic data-export         # ⚙️ renders ONE screenshot → ux-preview/mockup.png (system browser)
 ```
 
 Record the decision in `ux-design.md`. (Prefer Ant Design instead? `forge preview mockup --epic data-export --system ant-design` and re-shoot.)
@@ -157,13 +157,13 @@ Record the decision in `ux-design.md`. (Prefer Ant Design instead? `forge previe
 Content stays in the repo; Confluence is where humans review + sign off.
 
 ```bash
-👤 forge sync confluence publish --change data-export --doc prd.md        # 🌐 (repeat for brd/ux-design/compliance)
+🤖 forge sync confluence publish --change data-export --doc prd.md        # 🌐 each doc → its OWN page (repeat for brd/ux-design/compliance/work-orders)
 ```
-🌐 The PM reviews the PRD; the **DPO reviews the DPIA** and adds the `approved` label. UX approves the **mockup screenshot** embedded on the ux-design page.
+🌐 **You and other reviewers approve in Confluence:** the PM reviews the PRD; the **DPO reviews the DPIA** and adds the `approved` label; UX approves the **mockup screenshot** embedded on the ux-design page. Each document is a distinct page, so they're signed off independently.
 
 If reviewers leave comments:
 ```bash
-👤 forge sync confluence read-comments --change data-export
+🤖 forge sync confluence read-comments --change data-export
 🤖 folds the feedback into the repo docs → re-publishes (which clears `approved`, forcing fresh sign-off — strict re-approval)
 ```
 
@@ -172,7 +172,7 @@ If reviewers leave comments:
 ## 5. Track the work (JIRA)
 
 ```bash
-👤 forge sync jira epic --epic data-export        # 🌐 creates Epic PROJ-1
+🤖 forge sync jira epic --epic data-export        # 🌐 creates Epic PROJ-1
 ```
 
 ---
@@ -191,29 +191,37 @@ sequenceDiagram
   participant S as 🌐 SonarQube
   participant GH as 🌐 GitHub
   Dev->>CC: /opsx:propose wo-…
-  CC->>CC: author story + specs(+controls) + tasks
-  Dev->>F: forge sync confluence publish
+  CC->>CC: author story + specs(+controls) + test-cases + tasks
+  CC->>F: forge sync confluence publish (one page per doc)
   F->>CF: publish doc (+ mockup screenshot)
-  CF-->>Dev: reviewers add "approved" label
-  Dev->>F: forge sync jira story
+  CF-->>Dev: you add the "approved" label
+  CC->>F: forge sync jira story
   F->>J: create Story (key written to story.md)
   Dev->>CC: /opsx:apply
-  CC->>F: forge gate (pre-build)
-  F-->>CC: PASS (docs approved, specs valid)
-  CC->>CC: build on its own branch
+  CC->>F: forge sync confluence check (refresh approval)
+  CC->>F: forge gate (pre-build, 8 checks)
+  F-->>CC: PASS — else STOP (no code; pre-commit hook also blocks)
+  CC->>J: story → In Progress
+  CC->>F: forge start
+  F->>GH: fetch origin → branch from latest
+  CC->>CC: build on the synced branch
   CC->>F: forge scan
   F->>S: analyze → quality gate
   CC->>F: forge pr
-  F->>GH: open PR (Sonar summary in body)
+  F->>GH: push branch + open PR (Sonar summary in body)
+  F->>J: story → In Review
   Dev->>GH: review + merge (human decision)
-  Dev->>CC: openspec archive
+  CC->>F: forge done
+  F->>GH: verify PR merged?
+  GH-->>F: MERGED
+  F->>J: story → Done
+  CC->>CC: openspec archive
 ```
 
 ```bash
-👤 openspec new change wo-export-request --schema forge-workorder
 👤 /opsx:propose wo-export-request
 ```
-🤖 authors `story.md` (persona + acceptance criteria), `specs/**` (delta requirements with WHEN/THEN scenarios, **tagging controls**), and `tasks.md`:
+🤖 scaffolds the `forge-workorder` change (`openspec new change wo-export-request --schema forge-workorder`) and authors `story.md` (persona + acceptance criteria), `specs/**` (delta requirements with WHEN/THEN scenarios, **tagging controls**), **`test-cases.md`** (QA/UAT cases derived from those scenarios — for human QA, distinct from the unit tests the build+Sonar handle), and `tasks.md`:
 
 ```markdown
 ### Requirement: Request a data export
@@ -227,8 +235,9 @@ after re-authentication (control: PDP-CONSENT, ISO-A8.24-CRYPTO).
 
 Get it approved + tracked:
 ```bash
-👤 forge sync confluence publish --workorder wo-export-request   # 🌐 → reviewers approve
-👤 forge sync jira story --workorder wo-export-request --epic PROJ-1   # 🌐 Story PROJ-2; key written into story.md
+🤖 forge sync confluence publish --workorder wo-export-request --doc story.md        # 🌐 → you approve the plan
+🤖 forge sync confluence publish --workorder wo-export-request --doc test-cases.md   # 🌐 → QA approves (gates /opsx:propose completion)
+🤖 forge sync jira story --workorder wo-export-request --epic PROJ-1   # 🌐 Story PROJ-2; key written into story.md
 ```
 
 Now implement — **the agent does the rest via apply-guidance**:
@@ -236,17 +245,18 @@ Now implement — **the agent does the rest via apply-guidance**:
 👤 /opsx:apply wo-export-request
 ```
 ```
-🤖 runs ⚙️ forge gate  → checks docs are approved BEFORE building … PASS
-🤖 creates branch forge/PROJ-2, implements ONLY this work order, checks off tasks
+🤖 refreshes approval ⚙️ forge sync confluence check, then runs ⚙️ forge gate → verifies docs are approved BEFORE building … PASS
+🤖 (if approval is missing it STOPS, names the page that needs the `approved` label, writes NO code — a git pre-commit hook also blocks the commit)
+🤖 moves JIRA PROJ-2 → In Progress, runs ⚙️ forge start (fetches origin, cuts forge/PROJ-2 from the latest remote — remote is source of truth), implements ONLY this work order, checks off tasks
 🤖 runs ⚙️ forge scan   → 🌐 SonarQube (ephemeral per-PR project) → quality gate
-🤖 runs ⚙️ forge pr     → 🌐 opens the GitHub PR (Sonar summary in the body)
+🤖 runs ⚙️ forge pr     → 🌐 pushes the branch + opens the GitHub PR (Sonar summary in the body) → moves PROJ-2 → In Review
 🤖 stops (does not start another work order)
 ```
 
 Refresh traceability and confirm the gate:
 ```bash
-👤 forge rtm
-👤 forge gate --change wo-export-request
+🤖 forge rtm
+🤖 forge gate --change wo-export-request
 ```
 ```
 ⚙️  ✓ change-exists   ✓ artifacts-present  ✓ openspec-validate  ✓ rtm-present
@@ -261,8 +271,15 @@ Refresh traceability and confirm the gate:
 🌐 On the PR a human reviews the diff, the posted **Sonar quality gate**, and the compliance status.
 When satisfied, **they click merge** (on GitHub Free this is the human decision; the gate informed it).
 
+🌐 QA now **executes** the approved test cases. A failing case is filed as a JIRA `qa` defect (a workflow separate from the build):
 ```bash
-👤 openspec archive wo-export-request     # folds the delta specs into openspec/specs/, JIRA Story → Done
+🤖 forge sync jira qa --workorder wo-export-request          # files a JIRA issue per failing case (linked to the Story)
+🤖 forge sync jira qa --workorder wo-export-request --list   # agent reads open QA defects → fixes on the SAME branch → pushes
+```
+QA results are tracked, not gated — they never block archiving, but resolve open defects before you call it done. Then:
+```bash
+🤖 forge done --workorder wo-export-request   # verifies the PR is MERGED (gh/REST), then sets JIRA PROJ-2 → Done (refuses if not merged)
+👤 openspec archive wo-export-request         # folds the delta specs into openspec/specs/
 ```
 
 ---
@@ -272,7 +289,7 @@ When satisfied, **they click merge** (on GitHub Free this is the human decision;
 Repeat step 6–7 for `wo-export-deliver`. When the last work order is merged and archived, run:
 
 ```bash
-👤 forge rtm
+🤖 forge rtm
 ```
 ```
 | Work Order         | Requirement                | Controls                      | JIRA              | Confluence | Sonar | Branch          |
@@ -297,5 +314,7 @@ From a fuzzy idea to enterprise-ready, auditable code — and OpenSpec's core wa
 ## Notes
 
 - **Offline vs live.** Every `forge sync`/`scan`/`pr` runs offline via `--dry-run` / `--result-file <mock.json>` for dry runs and demos; drop those flags (and fill `.env`) to hit the real services. `forge doctor` shows readiness.
-- **Enforcement tier.** On GitHub Free the gate is *advisory* (front-loaded approval + posted PR status; a human merges). For a hard, merge-blocking gate, add GitHub Pro's required status checks — no schema/script changes needed.
+- **Enforcement tier.** On GitHub Free the gate is *advisory at the merge button*, but building is still gated three ways: the agent hard-stops in apply-guidance unless `forge gate` passes (approval green), a git **`pre-commit` hook** blocks commits on `forge/*` branches until the gate passes, and `forge pr` refuses to open a PR otherwise. The human still clicks merge (the posted Sonar/gate status informs it). For a *server-side* hard block, add GitHub Pro's required status checks — no schema/script changes needed.
+- **Repo sync (single-developer).** The remote is the source of truth. `forge start` runs automatically at build start (apply-guidance): it fetches origin and cuts/aligns the work-order branch from the latest remote, so every build is on current code (e.g. it picks up the previous work order's just-merged PR). It refuses on a dirty tree (`--force` to override) and falls back to the local base when offline.
+- **QA test cases vs unit tests.** `test-cases.md` holds human QA / UAT cases (derived from the scenarios); unit and integration tests are the build's job, enforced by the SonarQube quality gate. QA **sign-off** on the test-cases page gates `/opsx:propose` completion (and the build); QA **execution** results are tracked (JIRA `qa` issues + the RTM Test Cases column), not gated — a failing case is a defect the agent fixes on the same branch.
 - **Deeper docs.** `openspec/forge/README.md` (command reference) and `openspec/forge/DESIGN.md` (§13 lifecycle, §17 decisions, §19 roadmap).

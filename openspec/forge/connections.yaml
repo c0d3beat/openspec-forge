@@ -12,6 +12,8 @@ confluence:
 jira:
   baseUrl: https://your-org.atlassian.net
   project: FORGE
+  qaIssueType: Bug     # issue type for QA-found defects (a workflow separate from the build Story)
+  qaLabel: qa          # label applied to QA defect issues so they're easy to query
 
 github:
   repo: your-org/your-app

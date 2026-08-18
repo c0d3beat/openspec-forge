@@ -14,3 +14,17 @@ export function readJiraState(changeDir) {
   if (!existsSync(p)) return null;
   try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
 }
+
+/**
+ * QA defect issues live in a SEPARATE workflow from the build Story:
+ * `.forge/jira-qa.json` is a map keyed by test-case id → { key, url, status, summary }.
+ */
+export function jiraQaStatePath(changeDir) {
+  return path.join(changeDir, '.forge', 'jira-qa.json');
+}
+
+export function readJiraQaState(changeDir) {
+  const p = jiraQaStatePath(changeDir);
+  if (!existsSync(p)) return {};
+  try { return JSON.parse(readFileSync(p, 'utf8')) || {}; } catch { return {}; }
+}
