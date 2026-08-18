@@ -11,10 +11,10 @@ SonarQube), and Confluence / JIRA / GitHub integration — layered on top of `op
 flowchart LR
   idea(["💡 Idea"]) --> epic["📦 Epic<br/>BRD · PRD · UX · DPIA · work-orders"]
   epic -->|"Confluence approve · JIRA Epic"| loop{{"per work order"}}
-  loop --> wo["🧩 story · specs (+controls) · tasks"]
+  loop --> wo["🧩 story · specs (+controls) · QA test cases · tasks"]
   wo -->|"approve · JIRA story"| gate{"⚙️ gate<br/>validate · Sonar · approved · compliance"}
-  gate -->|"pass"| pr["🌐 branch → PR → review → merge"]
-  pr --> arch["openspec archive<br/>specs updated"]
+  gate -->|"pass"| pr["🌐 sync remote → branch → PR → review → merge"]
+  pr --> arch["/opsx:archive<br/>verify merge → JIRA Done → specs updated"]
   arch --> loop
   arch --> done(["✅ Shipped + RTM + evidence"])
 ```
@@ -53,7 +53,7 @@ the design-system rubric, `.env`, `config.yaml`).
 
 - Edit `openspec/forge/connections.yaml` (JIRA/Confluence/GitHub/SonarQube) and fill `.env`.
 - Read the **[end-to-end tutorial](openspec/forge/TUTORIAL.md)**, then **`openspec/forge/README.md`** (command reference) and **`openspec/forge/DESIGN.md`** (the full design).
-- Check readiness with `node openspec/forge/forge.mjs doctor`, then start in your AI agent. **You drive everything with just two commands — `/opsx:propose` (plan/author until approved) and `/opsx:apply` (build one work order); the agent runs every `forge` command for you, you never invoke it manually.**
+- The installer already ran a readiness check. Then just work in your AI agent — **your commands are `/opsx:propose` (plan/author until approved), `/opsx:apply` (build one work order), and `/opsx:archive` (finalize after merge); the agent runs every `forge` command for you, you never invoke it manually.**
 
 ## Workflows
 
@@ -61,12 +61,13 @@ Two tools work together: **OpenSpec's `/opsx:*`** slash commands (run in Claude 
 and **`forge`** (companion scripts) does the integrations + the gate. They're wired via
 `openspec/config.yaml`'s apply-guidance, so during `/opsx:apply` the agent automatically **refreshes the
 Confluence approval (`forge sync confluence check`), runs `forge gate`, and refuses to write any code unless
-it passes** (especially `confluence-approval`) — then builds and runs `forge pr`.
+it passes** (especially `confluence-approval`) — then sets JIRA **In Progress**, syncs the branch from the
+remote, builds, scans, and opens the PR (**In Review**). `/opsx:archive` verifies the merge and marks the story **Done**.
 
-> **You drive the whole thing with two commands** — `/opsx:propose` (plan a feature / author a work order until it's approved)
-> and `/opsx:apply` (build one approved work order). Your only other actions are human sign-offs: **approve** pages in
-> Confluence and **merge** the PR in GitHub. Every `forge …` command below is what the **agent** runs for you
-> (as `node openspec/forge/forge.mjs …`) — shown short for readability; you don't type them.
+> **You drive the whole thing with three commands** — `/opsx:propose` (plan a feature / author a work order until it's approved),
+> `/opsx:apply` (build one approved work order), and `/opsx:archive` (finalize it after merge). Your only other actions are
+> human sign-offs: **approve** pages in Confluence and **merge** the PR in GitHub. Every `forge …` command below is what the
+> **agent** runs for you (as `node openspec/forge/forge.mjs …`) — shown short for readability; you don't type them.
 
 ### The `forge` command surface
 
@@ -93,22 +94,23 @@ change built one at a time on its own branch/PR.
 ### 1. Plan a feature (the Epic)
 
 ```bash
-openspec new change my-feature --schema forge-epic
-# in Claude Code:  /opsx:propose my-feature
+# in Claude Code:  /opsx:propose my-feature      (the agent scaffolds the forge-epic change)
 #   → authors brd → prd → ux-design → capabilities → compliance → work-orders
-forge preview recommend --epic my-feature            # design system from the PRD/BRD (rationale + runner-up)
-forge preview mockup    --epic my-feature            # single-page app-shell mockup in the chosen system
+#   → asks you to confirm the tech stack (frontend/backend/database) if it isn't already clear
+# the agent then runs these for you:
+forge preview recommend --epic my-feature            # ranks the design systems → asks you to choose
+forge preview mockup    --epic my-feature            # single-page app-shell mockup in your chosen system
 forge preview shot      --epic my-feature            # render ONE screenshot (auto-embedded in Confluence on publish)
-forge sync confluence publish --workorder my-feature # publish docs; reviewers approve in Confluence
+forge sync confluence publish --change my-feature --doc prd.md   # one page per doc (repeat for brd/ux-design/compliance/work-orders)
 forge sync jira epic --epic my-feature               # create the JIRA Epic
 ```
 
 ### 2. Build a work order (one at a time)
 
 ```bash
-openspec new change wo-101-login --schema forge-workorder
-# in Claude Code:  /opsx:propose wo-101-login
+# in Claude Code:  /opsx:propose wo-101-login      (the agent scaffolds the forge-workorder change)
 #   → authors story + specs (tag controls e.g. "(control: PDP-CONSENT)") + test-cases (QA/UAT, from the scenarios) + tasks
+# the agent then runs these for you:
 forge sync confluence publish --workorder wo-101-login --doc story.md        # publish the plan for review
 forge sync confluence publish --workorder wo-101-login --doc test-cases.md   # QA signs off — gates /opsx:propose completion
 forge sync jira story --workorder wo-101-login --epic PROJ-1    # JIRA Story; key written back into story.md
@@ -117,12 +119,13 @@ forge sync jira story --workorder wo-101-login --epic PROJ-1    # JIRA Story; ke
 #   apply-guidance makes the agent: `forge sync confluence check` (refresh approval) → `forge gate`
 #   (STOP, write no code, if approval isn't green) → JIRA → In Progress → `forge start` (fetch origin, cut forge/<KEY> from latest remote)
 #   → build ONLY this work order → `forge scan` (SonarQube) → `forge pr` (pushes the branch + opens the PR → JIRA → In Review)
+#   → `forge rtm` (refresh the RTM, incl. Test Cases column)
+#
+#   → you review + merge the PR on GitHub (a human decision on Free)
+#   → QA runs the test cases; any failure becomes a `forge sync jira qa` defect the agent fixes on the same branch
 
-forge rtm                                                       # refresh the traceability matrix (incl. Test Cases column)
-#   → review + merge the PR on GitHub (a human decision on Free)
-forge sync jira qa --workorder wo-101-login --list             # any QA defects filed? fix them on the same branch (a separate loop)
-forge done --workorder wo-101-login                            # verifies the PR is MERGED, then sets JIRA → Done (refuses if not merged)
-openspec archive wo-101-login                                   # fold specs into openspec/specs/
+# in Claude Code:  /opsx:archive wo-101-login
+#   apply-guidance makes the agent: `forge done` (verify the PR is MERGED → JIRA Done) → fold specs into openspec/specs/
 ```
 
 Repeat step 2 per work order.
